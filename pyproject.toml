@@ -1,0 +1,18 @@
+[project]
+name = "apairo-preprocess"
+version = "0.1.0"
+description = "Preprocessing pipelines for apairo datasets"
+dependencies = [
+    "numpy",
+    "scipy",
+    "pyyaml",
+    "tqdm",
+
+    "apairo @ file:///home/abresset/dev/apairo",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
