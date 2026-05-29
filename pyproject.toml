@@ -8,7 +8,7 @@ dependencies = [
     "pyyaml",
     "tqdm",
 
-    "apairo @ file:///home/abresset/dev/apairo",
+    "apairo @ git+https://github.com/apairo-robotics/apairo.git",
 ]
 
 [tool.setuptools.packages.find]
