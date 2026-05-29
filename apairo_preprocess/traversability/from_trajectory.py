@@ -101,7 +101,8 @@ class TraversabilityFromTrajectory(FramePreprocessor):
             return np.zeros(N, dtype=np.uint8)
 
         tree = KDTree(future_pos[:, :2])
-        dist_xy, nn_idx = tree.query(xyz_world[:, :2], k=1, workers=-1)
+        # workers=-1 deadlocks when called from a ThreadPoolExecutor (e.g. viewer)
+        dist_xy, nn_idx = tree.query(xyz_world[:, :2], k=1)
         dz = xyz_world[:, 2] - future_pos[nn_idx, 2]
 
         return (
