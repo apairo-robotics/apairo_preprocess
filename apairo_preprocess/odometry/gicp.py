@@ -35,9 +35,11 @@ class GICPOdometry(FramePreprocessor):
     float64 array.
 
     Args:
+        lidar_key:  Input channel for point cloud data.
         voxel_size: Down-sampling voxel size (metres).
         max_range:  Range filter applied before registration (metres).
         max_corr:   Maximum correspondence distance for ICP (metres).
+        output_key: Override the default output channel name ``"gicp_poses"``.
     """
 
     output_key: ClassVar[str] = "gicp_poses"
@@ -48,10 +50,17 @@ class GICPOdometry(FramePreprocessor):
 
     def __init__(
         self,
+        lidar_key: str = "lidar",
         voxel_size: float = 0.3,
         max_range: float = 50.0,
         max_corr: float = 1.0,
+        output_key: str | None = None,
     ) -> None:
+        self._lidar_key = lidar_key
+        self.input_keys = [lidar_key]
+        self.sources = [lidar_key]
+        if output_key is not None:
+            self.output_key = output_key
         if not _O3D_OK:
             raise ImportError("open3d is required for GICPOdometry.")
         self._voxel_size = voxel_size
@@ -61,7 +70,7 @@ class GICPOdometry(FramePreprocessor):
         self._T_accum = np.eye(4, dtype=np.float64)
 
     def process(self, sample: Sample) -> np.ndarray:
-        pc = np.asarray(sample.data["lidar"])
+        pc = np.asarray(sample.data[self._lidar_key])
         xyz = pc[:, :3].astype(np.float64)
         xyz = xyz[np.linalg.norm(xyz, axis=1) < self._max_range]
 

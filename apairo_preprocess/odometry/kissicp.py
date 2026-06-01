@@ -38,11 +38,13 @@ class KissICPOdometry(FramePreprocessor):
     the accumulated T_world_lidar pose.  The first scan is the world origin.
 
     Args:
+        lidar_key:  Input channel for point cloud data.
         max_range:  Maximum point range kept before registration (metres).
         min_range:  Minimum point range kept (metres).
         voxel_size: Map voxel size (metres).  Controls both resolution and speed.
         deskew:     Enable motion deskewing.  Requires per-point timestamps in
                     the lidar channel (4th column).
+        output_key: Override the default output channel name ``"kissicp_poses"``.
     """
 
     output_key: ClassVar[str] = "kissicp_poses"
@@ -53,11 +55,18 @@ class KissICPOdometry(FramePreprocessor):
 
     def __init__(
         self,
+        lidar_key: str = "lidar",
         max_range: float = 50.0,
         min_range: float = 1.0,
         voxel_size: float = 1.0,
         deskew: bool = False,
+        output_key: str | None = None,
     ) -> None:
+        self._lidar_key = lidar_key
+        self.input_keys = [lidar_key]
+        self.sources = [lidar_key]
+        if output_key is not None:
+            self.output_key = output_key
         if not _KISS_OK:
             raise ImportError("kiss-icp is required for KissICPOdometry.  pip install kiss-icp")
         cfg = KISSConfig()
@@ -69,9 +78,8 @@ class KissICPOdometry(FramePreprocessor):
         self._deskew = deskew
 
     def process(self, sample: Sample) -> np.ndarray:
-        pc = np.asarray(sample.data["lidar"], dtype=np.float64)
+        pc = np.asarray(sample.data[self._lidar_key], dtype=np.float64)
         xyz = pc[:, :3]
-        # Per-point timestamps in col 3 when deskewing; zeros otherwise
         timestamps = pc[:, 3] if self._deskew and pc.shape[1] > 3 else np.zeros(len(xyz))
         self._kiss.register_frame(xyz, timestamps)
         return self._kiss.last_pose.copy()  # (4, 4) float64

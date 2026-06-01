@@ -2,8 +2,6 @@
 
 Each point is labelled 1 if its semantic class ID is in ``traversable_ids``, 0 otherwise.
 
-Output channel: ``trav_label``  (npys — one uint8 .npy per scan)
-
 Default traversable IDs for RELLIS-3D::
 
     {1: dirt, 3: grass, 10: asphalt, 23: concrete, 31: puddle, 33: mud}
@@ -32,8 +30,10 @@ class TraversabilityFromLabels(FramePreprocessor):
     """Label each point traversable based on its semantic class ID.
 
     Args:
+        labels_key:      Input channel for per-point semantic labels.
         traversable_ids: Set of semantic class IDs considered traversable.
                          Defaults to the RELLIS-3D traversable classes.
+        output_key:      Override the default output channel name ``"trav_label"``.
     """
 
     output_key: ClassVar[str] = "trav_label"
@@ -42,11 +42,21 @@ class TraversabilityFromLabels(FramePreprocessor):
     timestamps_from: ClassVar[str] = "lidar"
     sources: ClassVar[list[str]] = ["labels"]
 
-    def __init__(self, traversable_ids: frozenset[int] | None = None) -> None:
+    def __init__(
+        self,
+        labels_key: str = "labels",
+        traversable_ids: frozenset[int] | None = None,
+        output_key: str | None = None,
+    ) -> None:
+        self._labels_key = labels_key
         self._trav_ids = (
             traversable_ids if traversable_ids is not None else _RELLIS_TRAVERSABLE_IDS
         )
+        self.input_keys = [labels_key]
+        self.sources = [labels_key]
+        if output_key is not None:
+            self.output_key = output_key
 
     def process(self, sample: Sample) -> np.ndarray:
-        labels = np.asarray(sample.data["labels"])
+        labels = np.asarray(sample.data[self._labels_key])
         return np.isin(labels, list(self._trav_ids)).astype(np.uint8)
