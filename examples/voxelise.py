@@ -1,16 +1,15 @@
-"""Voxel-grid downsampling of LiDAR scans with consistent label aggregation.
+"""Voxel-grid downsampling of LiDAR scans with labels and integer coordinates.
 
-Runs two preprocessors in sequence on the same sequence directory:
+Runs three preprocessors in sequence on the same sequence directory:
 
-  1. ``VoxelisePointCloud`` — reduces each scan to one representative point per
-     voxel cell.  Output channel: ``voxelised`` (npys, float64, shape (N', 4)).
+  1. ``VoxelisePointCloud``  — float features (xyz centroid + intensity), shape (N', 4).
+  2. ``VoxeliseLabels``      — aggregated semantic label per voxel, shape (N',).
+  3. ``VoxeliseCoords``      — integer voxel coordinates floor(xyz/voxel_size),
+                               shape (N', 3) int32.
 
-  2. ``VoxeliseLabels`` — aggregates per-point semantic labels onto the same
-     voxel grid using the chosen strategy (``majority`` or ``max``).
-     Output channel: ``voxelised_labels`` (npys, int64, shape (N',)).
-
-Both steps use identical ``voxel_size`` and ``max_range`` values so that
-``voxelised[i]`` and ``voxelised_labels[i]`` refer to the same voxel.
+All three use identical ``voxel_size`` and ``max_range`` so that index ``i``
+refers to the same voxel cell across all channels — no recomputation needed at
+training time.
 
 Supported datasets: rellis, semantic_kitti.
 
@@ -28,7 +27,11 @@ from pathlib import Path
 from apairo.dataset.rellis.dataset import Rellis3DDataset
 from apairo.dataset.semantic_kitti.dataset import SemanticKittiDataset
 
-from apairo_preprocess.pointcloud.voxelise import VoxeliseLabels, VoxelisePointCloud
+from apairo_preprocess.pointcloud.voxelise import (
+    VoxeliseCoords,
+    VoxeliseLabels,
+    VoxelisePointCloud,
+)
 
 DATASETS = {
     "rellis": Rellis3DDataset,
@@ -72,33 +75,48 @@ def main() -> None:
     print(f"Label aggregation: {args.label_aggregation}")
     print()
 
-    # --- Step 1: voxelise point cloud ---
-    print("Step 1/2  Voxelising point cloud …")
-    pc_prep = VoxelisePointCloud(
-        lidar_key=args.lidar_key,
-        voxel_size=args.voxel_size,
-        max_range=args.max_range,
-        reduction=args.reduction,
-    )
-    dataset_cls.run_preprocess(pc_prep, seq_dir, overwrite=args.overwrite)
-    print(f"          → channel '{pc_prep.output_key}' written.\n")
+    shared = dict(voxel_size=args.voxel_size, max_range=args.max_range)
 
-    # --- Step 2: voxelise labels (same grid) ---
-    print("Step 2/2  Aggregating semantic labels …")
-    lbl_prep = VoxeliseLabels(
-        lidar_key=args.lidar_key,
-        labels_key=args.labels_key,
-        voxel_size=args.voxel_size,
-        max_range=args.max_range,
-        aggregation=args.label_aggregation,
-    )
-    dataset_cls.run_preprocess(lbl_prep, seq_dir, overwrite=args.overwrite)
-    print(f"          → channel '{lbl_prep.output_key}' written.\n")
+    steps = [
+        (
+            "Voxelising point cloud",
+            VoxelisePointCloud(
+                lidar_key=args.lidar_key,
+                reduction=args.reduction,
+                **shared,
+            ),
+        ),
+        (
+            "Aggregating semantic labels",
+            VoxeliseLabels(
+                lidar_key=args.lidar_key,
+                labels_key=args.labels_key,
+                aggregation=args.label_aggregation,
+                **shared,
+            ),
+        ),
+        (
+            "Saving integer voxel coordinates",
+            VoxeliseCoords(
+                lidar_key=args.lidar_key,
+                **shared,
+            ),
+        ),
+    ]
+
+    for i, (desc, prep) in enumerate(steps, 1):
+        print(f"Step {i}/{len(steps)}  {desc} …")
+        dataset_cls.run_preprocess(prep, seq_dir, overwrite=args.overwrite)
+        print(f"          → channel '{prep.output_key}' written.\n")
 
     print("Done.")
     print()
-    print("Both channels share the same voxel index — voxelised[i] and")
-    print("voxelised_labels[i] correspond to the same voxel cell.")
+    print("The three channels share the same voxel index — a data loader can")
+    print("load them directly without recomputing floor(xyz / voxel_size):")
+    print()
+    print("    feats  = np.load('voxelised/000000.npy')        # (N', 4) float64")
+    print("    labels = np.load('voxelised_labels/000000.npy') # (N',)   int")
+    print("    coords = np.load('voxel_coords/000000.npy')     # (N', 3) int32")
 
 
 if __name__ == "__main__":

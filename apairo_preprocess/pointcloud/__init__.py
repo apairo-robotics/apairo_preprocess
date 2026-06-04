@@ -1,3 +1,3 @@
-from apairo_preprocess.pointcloud.voxelise import VoxeliseLabels, VoxelisePointCloud
+from apairo_preprocess.pointcloud.voxelise import VoxeliseCoords, VoxeliseLabels, VoxelisePointCloud
 
-__all__ = ["VoxelisePointCloud", "VoxeliseLabels"]
+__all__ = ["VoxelisePointCloud", "VoxeliseLabels", "VoxeliseCoords"]
