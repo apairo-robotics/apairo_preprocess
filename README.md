@@ -1,6 +1,6 @@
 # apairo-preprocess
 
-Preprocessing pipelines for [apairo](https://github.com/apairo-robotics/apairo) datasets — LiDAR odometry and traversability ground truth generation.
+Preprocessing pipelines for [apairo](https://github.com/apairo-robotics/apairo) datasets — LiDAR odometry, ground segmentation, and traversability ground truth generation.
 
 ---
 
@@ -10,12 +10,14 @@ Preprocessing pipelines for [apairo](https://github.com/apairo-robotics/apairo) 
 pip install git+https://github.com/apairo-robotics/apairo_preprocess.git
 ```
 
-Optional dependencies:
+### Optional dependencies
 
-```bash
-pip install kiss-icp   # for KissICPOdometry
-pip install open3d     # for GICPOdometry
-```
+| Preprocessor | Dependency | Install |
+|---|---|---|
+| `KissICPOdometry` | KISS-ICP | `pip install kiss-icp` |
+| `GICPOdometry` | Open3D | `pip install open3d` |
+| `GroundSegmentationCSF` / `GroundHeightFromLabels` (CSF backend) | CSF | `pip install CSF` |
+| `TerraSegGroundSegmentation` | TerraSeg | `pip install terraseg` |
 
 Requires Python ≥ 3.11.
 
@@ -30,42 +32,81 @@ Requires Python ≥ 3.11.
 | `KissICPOdometry` | `kissicp_poses` | [KISS-ICP](https://github.com/PRBonn/kiss-icp) | `(4, 4)` float64 pose per scan |
 | `GICPOdometry` | `gicp_poses` | Open3D GICP | `(4, 4)` float64 pose per scan |
 
+### Ground segmentation
+
+Binary ground/non-ground labels (0 = ground, 1 = non-ground). All three algorithms share the same label convention and can be compared directly.
+
+| Class | Output channel | Method | Extra dep |
+|---|---|---|---|
+| `GroundSegmentationCSF` | `ground_csf` | Cloth Simulation Filter — accurate on uneven terrain | `CSF` |
+| `GroundSegmentationRANSAC` | `ground_ransac` | RANSAC plane fitting — fast, assumes flat ground | — |
+| `TerraSegGroundSegmentation` | `terraseg_ground` | Self-supervised ML model (TerraSeg) | `terraseg` |
+
+### Priors
+
+Scalar per-point features used as traversability priors. Depend on previously computed channels.
+
+| Class | Output channel | Input channels | Output |
+|---|---|---|---|
+| `GroundHeightFromLabels` | `ground_height` | any ground segmentation + `voxelised` | float32 height above nearest ground point (m) |
+| `TrajectoryDistance` | `trajectory_distance` | `voxelised` + `poses` | float32 distance to nearest trajectory waypoint (m) |
+
 ### Traversability
+
+Binary traversability labels (1 = traversable, 0 = not).
 
 | Class | Output channel | Method |
 |---|---|---|
 | `TraversabilityFromLabels` | `trav_label` | Maps semantic class IDs to binary traversable/non-traversable |
-| `TraversabilityFromTrajectory` | `trav_gt` | Labels points inside the robot's forward footprint along the trajectory |
+| `TraversabilityFromTrajectory` | `trav_traj` | Labels points inside the robot's forward footprint along the trajectory |
 
 ---
 
 ## Quickstart
 
-### KISS-ICP odometry
+### Ground segmentation
 
 ```python
 from apairo.dataset.rellis import Rellis3DDataset
-from apairo_preprocess import KissICPOdometry
+from apairo_preprocess import GroundSegmentationCSF, GroundSegmentationRANSAC, TerraSegGroundSegmentation
 
-Rellis3DDataset.run_preprocess(
-    KissICPOdometry(voxel_size=1.0),
-    "/data/Rellis-3D/00000",
-)
-# writes kissicp_poses/000000.npy, 000001.npy, ...
+dataset_dir = "/data/Rellis-3D/00000"
+
+# Classical methods (no GPU required)
+Rellis3DDataset.run_preprocess(GroundSegmentationRANSAC(), dataset_dir)
+Rellis3DDataset.run_preprocess(GroundSegmentationCSF(), dataset_dir)   # requires: pip install CSF
+
+# ML-based (requires: pip install terraseg)
+Rellis3DDataset.run_preprocess(TerraSegGroundSegmentation(variant="S"), dataset_dir)
+
+# writes ground_ransac/, ground_csf/, terraseg_ground/  (uint8: 0=ground, 1=non-ground)
 ```
+
+### Height above ground (prior)
+
+Ground segmentation must be computed first.
+
+```python
+from apairo_preprocess import GroundSegmentationCSF, GroundHeightFromLabels
+
+Rellis3DDataset.run_preprocess(GroundSegmentationCSF(), dataset_dir)
+Rellis3DDataset.run_preprocess(
+    GroundHeightFromLabels(ground_key="ground_csf"),
+    dataset_dir,
+)
+# writes ground_height/  (float32, metres above nearest ground point)
+```
+
+`GroundHeightFromLabels` accepts any ground key — swap `"ground_csf"` for `"ground_ransac"` or `"terraseg_ground"` to change the backend without re-running CSF.
 
 ### Traversability from semantic labels
 
 ```python
-from apairo.dataset.rellis import Rellis3DDataset
 from apairo_preprocess import TraversabilityFromLabels
 
 # Default traversable IDs for RELLIS-3D: {dirt, grass, asphalt, concrete, puddle, mud}
-Rellis3DDataset.run_preprocess(
-    TraversabilityFromLabels(),
-    "/data/Rellis-3D/00000",
-)
-# writes trav_label/000000.npy, ...  (uint8: 1=traversable, 0=not)
+Rellis3DDataset.run_preprocess(TraversabilityFromLabels(), dataset_dir)
+# writes trav_label/  (uint8: 1=traversable, 0=not)
 ```
 
 Custom IDs for SemanticKITTI:
@@ -85,25 +126,15 @@ SemanticKittiDataset.run_preprocess(
 Requires poses to be computed first (e.g. with `KissICPOdometry`).
 
 ```python
-import numpy as np
 from apairo.dataset.goose import Goose3DDataset
 from apairo_preprocess import KissICPOdometry, TraversabilityFromTrajectory
 
-# Step 1 — odometry
+Goose3DDataset.run_preprocess(KissICPOdometry(voxel_size=1.0), "/data/goose/seq_001")
 Goose3DDataset.run_preprocess(
-    KissICPOdometry(voxel_size=1.0),
+    TraversabilityFromTrajectory(poses_key="kissicp_poses", robot_radius=0.75),
     "/data/goose/seq_001",
 )
-
-# Step 2 — load poses and compute traversability ground truth
-ds = Goose3DDataset("/data/goose/seq_001", keys=["kissicp_poses"])
-poses = np.stack([ds[i].data["kissicp_poses"] for i in range(len(ds))])
-
-Goose3DDataset.run_preprocess(
-    TraversabilityFromTrajectory(poses, robot_radius=0.75, height_min=-0.3, height_max=0.5),
-    "/data/goose/seq_001",
-)
-# writes trav_gt/000000.npy, ...  (uint8: 1=traversable, 0=not)
+# writes trav_traj/  (uint8: 1=traversable, 0=not)
 ```
 
 ---
@@ -113,13 +144,8 @@ Goose3DDataset.run_preprocess(
 Ready-to-run scripts in [`examples/`](examples/):
 
 ```bash
-# KISS-ICP odometry on any supported dataset
 python examples/kissicp_odometry.py /data/Rellis-3D/00000 --dataset rellis
-
-# Traversability from semantic labels
 python examples/traversability_from_labels.py /data/Rellis-3D/00000
-
-# Traversability ground truth from trajectory (runs odometry first if needed)
 python examples/traversability_from_trajectory.py /data/goose/seq_001
 ```
 
