@@ -95,7 +95,7 @@ def test_output_shape_and_dtype():
     poses = _straight_line_poses(5)
     out = _proc(poses)
     assert out.dtype == np.uint8
-    assert out.shape == (5, 5)  # 5 frames × 5 points (default zeros)
+    assert out.shape == (5, 5)  # 5 frames x 5 points (default zeros)
 
 
 def test_point_on_future_pose_is_traversable():

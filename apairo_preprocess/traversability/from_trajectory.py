@@ -59,7 +59,7 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
 
     Args:
         lidar_key:      Input channel for point cloud data.
-        poses_key:      Input channel for per-frame poses (4×4 or 3×4).
+        poses_key:      Input channel for per-frame poses (4x4 or 3x4).
         robot_radius:   Half-width of the robot footprint in XY (metres).
         height_min:     Minimum point height relative to the nearest robot
                         position to be traversable (metres, ≤ 0).

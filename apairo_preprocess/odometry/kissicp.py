@@ -1,7 +1,7 @@
 """LiDAR odometry via KISS-ICP.
 
 Produces one (4, 4) float64 world pose per scan using KISS-ICP
-(https://github.com/PRBonn/kiss-icp).  Much faster than Open3D GICP (~100×)
+(https://github.com/PRBonn/kiss-icp).  Much faster than Open3D GICP (~100x)
 and handles motion deskewing natively when per-point timestamps are available.
 
 Output channel: ``kissicp_poses``  (npys — one .npy per scan)
