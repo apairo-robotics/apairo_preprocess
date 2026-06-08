@@ -29,6 +29,7 @@ from scipy.spatial import KDTree
 
 from apairo.core.preprocessor import SequencePreprocessor
 from apairo.core.sample import Sample
+from apairo_transform import RangeFilter
 
 
 def _to_4x4(poses: np.ndarray) -> np.ndarray:
@@ -58,19 +59,28 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
     where the full trajectory is available.
 
     Args:
-        lidar_key:      Input channel for point cloud data.
-        poses_key:      Input channel for per-frame poses (4x4 or 3x4).
-        robot_radius:   Half-width of the robot footprint in XY (metres).
-        height_min:     Minimum point height relative to the nearest robot
-                        position to be traversable (metres, ≤ 0).
-        height_max:     Maximum point height relative to the nearest robot
-                        position (metres, ≥ 0).
-        forward_window: Maximum number of future poses to look ahead.
-                        ``None`` (default) uses the entire remaining trajectory.
-        sequence_gap:   Distance threshold (metres) to detect sequence
-                        boundaries and avoid look-ahead across discontinuous
-                        sessions.
-        output_key:     Override the default output channel name ``"trav_traj"``.
+        lidar_key:             Input channel for point cloud data.
+        poses_key:             Input channel for per-frame poses (4x4 or 3x4).
+        robot_radius:          Half-width of the robot footprint in XY (metres).
+        height_min:            Minimum point height relative to the nearest robot
+                               position to be traversable (metres, ≤ 0).
+        height_max:            Maximum point height relative to the nearest robot
+                               position (metres, ≥ 0).
+        forward_window:        Maximum number of future poses to look ahead.
+                               ``None`` (default) uses the entire remaining trajectory.
+        sequence_gap:          Distance threshold (metres) to detect sequence
+                               boundaries and avoid look-ahead across discontinuous
+                               sessions.
+        near_exclusion_radius: Sensor-frame distance below which a point is never
+                               labelled traversable, suppressing dynamic objects
+                               (e.g. humans) close to the robot.  The shape of the
+                               exclusion zone is controlled by ``near_exclusion_norm``.
+                               ``0.0`` disables the exclusion (default).
+        near_exclusion_norm:   Norm order for the exclusion distance, forwarded to
+                               :class:`~apairo_transform.RangeFilter`.  Use
+                               ``np.inf`` (L∞) for a cube, ``2`` for a sphere.
+                               Defaults to ``np.inf``.
+        output_key:            Override the default output channel name ``"trav_traj"``.
     """
 
     output_key: ClassVar[str] = "trav_traj"
@@ -88,6 +98,8 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
         height_max: float = 0.5,
         forward_window: int | None = None,
         sequence_gap: float = 5.0,
+        near_exclusion_radius: float = 0.0,
+        near_exclusion_norm: float = np.inf,
         output_key: str | None = None,
     ) -> None:
         self._lidar_key = lidar_key
@@ -97,6 +109,11 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
         self._height_max = height_max
         self._forward_window = forward_window
         self._sequence_gap = sequence_gap
+        self._near_filter = (
+            RangeFilter(min=near_exclusion_radius, max=None, norm=near_exclusion_norm)
+            if near_exclusion_radius > 0
+            else None
+        )
 
         self.input_keys = [lidar_key, poses_key]
         self.sources = [lidar_key, poses_key]
@@ -144,12 +161,14 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
             dist_xy, nn_idx = tree.query(xyz_world[:, :2], k=1)
             dz = xyz_world[:, 2] - future_pos[nn_idx, 2]
 
-            results.append(
-                (
-                    (dist_xy < self._robot_radius)
-                    & (dz >= self._height_min)
-                    & (dz <= self._height_max)
-                ).astype(np.uint8)
+            trav = (
+                (dist_xy < self._robot_radius)
+                & (dz >= self._height_min)
+                & (dz <= self._height_max)
             )
+            if self._near_filter is not None:
+                trav &= self._near_filter.compute_mask(xyz_sensor)
+
+            results.append(trav.astype(np.uint8))
 
         return np.stack(results)

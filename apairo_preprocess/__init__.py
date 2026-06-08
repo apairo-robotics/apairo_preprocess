@@ -1,5 +1,5 @@
 from apairo_preprocess.traversability import TraversabilityFromLabels, TraversabilityFromTrajectory
-from apairo_preprocess.ground import GroundSegmentationCSF, GroundSegmentationRANSAC, TerraSegGroundSegmentation
+from apairo_preprocess.ground import GroundSegmentationCSF, GroundSegmentationFromLabels, GroundSegmentationRANSAC, TerraSegGroundSegmentation
 from apairo_preprocess.priors import GroundHeightFromLabels, TrajectoryDistance
 from apairo_preprocess.odometry import GICPOdometry, KissICPOdometry
 from apairo_preprocess.pointcloud import VoxeliseCoords, VoxeliseLabels, VoxelisePointCloud, RemoveRobotPoints
@@ -12,6 +12,7 @@ __all__ = [
     "TraversabilityFromLabels",
     "TraversabilityFromTrajectory",
     "GroundSegmentationCSF",
+    "GroundSegmentationFromLabels",
     "GroundSegmentationRANSAC",
     "TerraSegGroundSegmentation",
     "GroundHeightFromLabels",

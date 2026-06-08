@@ -16,8 +16,8 @@ pip install git+https://github.com/apairo-robotics/apairo_preprocess.git
 |---|---|---|
 | `KissICPOdometry` | KISS-ICP | `pip install kiss-icp` |
 | `GICPOdometry` | Open3D | `pip install open3d` |
-| `GroundSegmentationCSF` / `GroundHeightFromLabels` (CSF backend) | CSF | `pip install CSF` |
-| `TerraSegGroundSegmentation` | TerraSeg | `pip install terraseg` |
+| `GroundSegmentationCSF` / `GroundHeightFromLabels` (CSF backend) | CSF | `pip install cloth-simulation-filter` |
+| `TerraSegGroundSegmentation` | [TerraSeg](https://github.com/TedLentsch/TerraSeg) | `pip install git+https://github.com/TedLentsch/TerraSeg.git` |
 
 Requires Python ≥ 3.11.
 
@@ -76,7 +76,7 @@ dataset_dir = "/data/Rellis-3D/00000"
 Rellis3DDataset.run_preprocess(GroundSegmentationRANSAC(), dataset_dir)
 Rellis3DDataset.run_preprocess(GroundSegmentationCSF(), dataset_dir)   # requires: pip install CSF
 
-# ML-based (requires: pip install terraseg)
+# ML-based (requires: pip install git+https://github.com/TedLentsch/TerraSeg.git)
 Rellis3DDataset.run_preprocess(TerraSegGroundSegmentation(variant="S"), dataset_dir)
 
 # writes ground_ransac/, ground_csf/, terraseg_ground/  (uint8: 0=ground, 1=non-ground)
