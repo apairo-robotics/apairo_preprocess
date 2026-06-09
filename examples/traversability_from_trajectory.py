@@ -1,4 +1,4 @@
-"""Compute trajectory-based traversability ground truth on a GOOSE-3D sequence.
+"""Compute trajectory-based traversability ground truth on a GOOSE-3D split.
 
 A point is labelled traversable (1) if it falls within the robot's footprint
 along any future pose in the trajectory.  This requires poses to already be
@@ -6,32 +6,28 @@ computed — run ``kissicp_odometry.py`` first if ``kissicp_poses`` is not yet
 available.
 
 The script runs in two steps:
-  1. Odometry  (skipped if the poses channel already exists, unless --overwrite)
+  1. Odometry
   2. Traversability labelling from the resulting trajectory
 
 Usage::
 
-    python examples/traversability_from_trajectory.py /data/goose/seq_001
-    python examples/traversability_from_trajectory.py /data/goose/seq_001 \\
+    python examples/traversability_from_trajectory.py /data/GOOSE_3D --split train
+    python examples/traversability_from_trajectory.py /data/GOOSE_3D --split val \\
         --poses-key kissicp_poses --robot-radius 0.6 --overwrite
 """
 
 import argparse
-from pathlib import Path
 
 from apairo.dataset.goose.dataset import Goose3DDataset
 
-from apairo_preprocess.odometry.kissicp import KissICPOdometry
-from apairo_preprocess.traversability.from_trajectory import TraversabilityFromTrajectory
-
-
-def _channel_exists(seq_dir: Path, key: str) -> bool:
-    return any((seq_dir / key).glob("*.npy"))
+from apairo_preprocess import KissICPOdometry, TraversabilityFromTrajectory
 
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("seq_dir", help="GOOSE-3D sequence directory.")
+    p.add_argument("root_dir", help="GOOSE-3D root directory.")
+    p.add_argument("--split", default="train", choices=["train", "val", "test"],
+                   help="Dataset split (default: train).")
     p.add_argument("--lidar-key", default="lidar",
                    help="Input LiDAR channel (default: lidar).")
     p.add_argument("--poses-key", default="kissicp_poses",
@@ -52,24 +48,25 @@ def main() -> None:
                    help="Recompute both odometry and traversability even if they exist.")
     args = p.parse_args()
 
-    seq_dir = Path(args.seq_dir)
+    dataset_kwargs = dict(split=args.split)
 
     # --- Step 1: odometry ---
-    if _channel_exists(seq_dir, args.poses_key) and not args.overwrite:
-        print(f"Step 1/2  '{args.poses_key}' already present, skipping.")
-    else:
-        print("Step 1/2  Running KISS-ICP odometry …")
-        Goose3DDataset.run_preprocess(
-            KissICPOdometry(
-                lidar_key=args.lidar_key,
-                voxel_size=args.voxel_size,
-                output_key=args.poses_key,
-            ),
-            seq_dir,
-            overwrite=args.overwrite,
-        )
+    print("Step 1/2  Running KISS-ICP odometry …")
+    Goose3DDataset.run_preprocess(
+        KissICPOdometry(
+            lidar_key=args.lidar_key,
+            voxel_size=args.voxel_size,
+            output_key=args.poses_key,
+        ),
+        args.root_dir,
+        overwrite=args.overwrite,
+        **dataset_kwargs,
+    )
 
     # --- Step 2: traversability ---
+    # Poses from KISS-ICP are already (4, 4) float64.  If you bring external
+    # poses in another format (quaternion, Euler, compact 3×4), apply
+    # ds.transform(poses_key, PoseTo4x4()) from apairo_transform first.
     print("Step 2/2  Computing traversability ground truth …")
     Goose3DDataset.run_preprocess(
         TraversabilityFromTrajectory(
@@ -81,8 +78,9 @@ def main() -> None:
             forward_window=args.forward_window,
             output_key=args.output_key,
         ),
-        seq_dir,
+        args.root_dir,
         overwrite=args.overwrite,
+        **dataset_kwargs,
     )
     print("Done.")
 

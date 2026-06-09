@@ -8,9 +8,9 @@ Poses are read from the dataset via ``poses_key`` (declared in
 ``input_keys``).  The full trajectory is available in ``process()`` because
 :class:`SequencePreprocessor` receives an iterator over all frames at once.
 
-Accepted pose formats (per frame):
-  - ``(4, 4)`` float64 — standard homogeneous transform T_world_sensor
-  - ``(3, 4)`` float64 — compact form, homogeneous row appended automatically
+Poses must be ``(4, 4)`` float64 homogeneous matrices.  Apply
+``ds.transform(poses_key, PoseTo4x4())`` from ``apairo_transform`` beforehand
+if your poses are stored in another format (quaternion, Euler, compact 3×4).
 
 Typical usage::
 
@@ -32,24 +32,6 @@ from apairo.core.sample import Sample
 from apairo_transform import RangeFilter
 
 
-def _to_4x4(poses: np.ndarray) -> np.ndarray:
-    """Normalise a pose array to (N, 4, 4) float64.
-
-    Accepts (N, 4, 4) or (N, 3, 4); the compact form has the homogeneous row
-    ``[0, 0, 0, 1]`` appended automatically.
-    """
-    poses = np.asarray(poses, dtype=np.float64)
-    if poses.ndim == 3 and poses.shape[1:] == (3, 4):
-        n = poses.shape[0]
-        bottom = np.zeros((n, 1, 4), dtype=np.float64)
-        bottom[:, 0, 3] = 1.0
-        poses = np.concatenate([poses, bottom], axis=1)
-    if poses.ndim != 3 or poses.shape[1:] != (4, 4):
-        raise ValueError(
-            f"poses must be (N, 4, 4) or (N, 3, 4), got {poses.shape}"
-        )
-    return poses
-
 
 class TraversabilityFromTrajectory(SequencePreprocessor):
     """Label each point traversable if it lies in the robot's forward footprint.
@@ -60,7 +42,9 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
 
     Args:
         lidar_key:             Input channel for point cloud data.
-        poses_key:             Input channel for per-frame poses (4x4 or 3x4).
+        poses_key:             Input channel for per-frame poses — must be ``(4, 4)``
+                               float64.  Apply ``PoseTo4x4()`` from ``apairo_transform``
+                               if needed.
         robot_radius:          Half-width of the robot footprint in XY (metres).
         height_min:            Minimum point height relative to the nearest robot
                                position to be traversable (metres, ≤ 0).
@@ -124,7 +108,14 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
         all_samples = list(frames)
         n = len(all_samples)
 
-        poses = _to_4x4(np.stack([s.data[self._poses_key] for s in all_samples]))
+        poses = np.asarray(
+            np.stack([s.data[self._poses_key] for s in all_samples]), dtype=np.float64
+        )
+        if poses.shape[1:] != (4, 4):
+            raise ValueError(
+                f"poses must be (N, 4, 4) — apply PoseTo4x4() from apairo_transform first. "
+                f"Got {poses.shape}"
+            )
 
         # Sequence boundary detection — done here where poses are available.
         positions = poses[:, :3, 3]

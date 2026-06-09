@@ -19,7 +19,7 @@ from apairo.dataset.goose.dataset import Goose3DDataset
 from apairo.dataset.rellis.dataset import Rellis3DDataset
 from apairo.dataset.semantic_kitti.dataset import SemanticKittiDataset
 
-from apairo_preprocess.odometry.kissicp import KissICPOdometry
+from apairo_preprocess import KissICPOdometry
 
 DATASETS = {
     "goose": Goose3DDataset,

@@ -36,17 +36,6 @@ from apairo.core.preprocessor import FramePreprocessor
 from apairo.core.sample import Sample
 
 
-def _to_4x4(pose: np.ndarray) -> np.ndarray:
-    pose = np.asarray(pose, dtype=np.float64)
-    if pose.ndim == 1 and pose.shape[0] == 16:
-        pose = pose.reshape(4, 4)
-    if pose.shape == (3, 4):
-        bottom = np.array([[0.0, 0.0, 0.0, 1.0]])
-        pose = np.vstack([pose, bottom])
-    if pose.shape != (4, 4):
-        raise ValueError(f"Pose must be (3, 4) or (4, 4), got {pose.shape}")
-    return pose
-
 
 class TrajectoryDistance(FramePreprocessor):
     """Per-voxel Euclidean distance to the nearest trajectory waypoint.
@@ -59,7 +48,8 @@ class TrajectoryDistance(FramePreprocessor):
         trajectory:    (M, 3) array of robot positions in world frame.
                        Typically ``all_poses[:, :3, 3]`` from the sequence.
         voxelised_key: Input channel for the voxelised point cloud.
-        poses_key:     Input channel for the current-frame pose (4x4 or 3x4).
+        poses_key:     Input channel for the current-frame pose — must be ``(4, 4)``
+                       float64.  Apply ``PoseTo4x4()`` from ``apairo_transform`` if needed.
         output_key:    Override the default channel name
                        ``"trajectory_distance"``.
     """
@@ -92,7 +82,12 @@ class TrajectoryDistance(FramePreprocessor):
 
     def process(self, sample: Sample) -> np.ndarray:
         pc = np.asarray(sample.data[self._voxelised_key], dtype=np.float64)
-        pose = _to_4x4(np.asarray(sample.data[self._poses_key]))
+        pose = np.asarray(sample.data[self._poses_key], dtype=np.float64)
+        if pose.shape != (4, 4):
+            raise ValueError(
+                f"pose must be (4, 4) — apply PoseTo4x4() from apairo_transform first. "
+                f"Got {pose.shape}"
+            )
 
         n = len(pc)
         xyz_sensor = pc[:, :3]

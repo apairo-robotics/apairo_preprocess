@@ -27,11 +27,7 @@ from pathlib import Path
 from apairo.dataset.rellis.dataset import Rellis3DDataset
 from apairo.dataset.semantic_kitti.dataset import SemanticKittiDataset
 
-from apairo_preprocess.pointcloud.voxelise import (
-    VoxeliseCoords,
-    VoxeliseLabels,
-    VoxelisePointCloud,
-)
+from apairo_preprocess import VoxeliseCoords, VoxeliseLabels, VoxelisePointCloud
 
 DATASETS = {
     "rellis": Rellis3DDataset,

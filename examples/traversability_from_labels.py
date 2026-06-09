@@ -15,7 +15,7 @@ import argparse
 from apairo.dataset.rellis.dataset import Rellis3DDataset
 from apairo.dataset.semantic_kitti.dataset import SemanticKittiDataset
 
-from apairo_preprocess.traversability.from_labels import TraversabilityFromLabels
+from apairo_preprocess import TraversabilityFromLabels
 
 DATASETS = {
     "rellis": Rellis3DDataset,
