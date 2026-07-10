@@ -2,10 +2,7 @@ import numpy as np
 import pytest
 from apairo.core.sample import Sample
 
-from apairo_preprocess.traversability.from_trajectory import (
-    TraversabilityFromTrajectory,
-    _to_4x4,
-)
+from apairo_preprocess.traversability.from_trajectory import TraversabilityFromTrajectory
 
 
 def _straight_line_poses(n, step=2.0):
@@ -35,29 +32,6 @@ def _proc(poses, **kwargs):
     proc = TraversabilityFromTrajectory(**kwargs)
     samples = _samples(poses)
     return proc.process(iter(samples))
-
-
-# ------------------------------------------------------------------
-# _to_4x4 helper
-# ------------------------------------------------------------------
-
-def test_to_4x4_passthrough():
-    poses = np.tile(np.eye(4, dtype=np.float64), (3, 1, 1))
-    out = _to_4x4(poses)
-    assert out.shape == (3, 4, 4)
-    np.testing.assert_array_equal(out, poses)
-
-
-def test_to_4x4_from_3x4():
-    poses_34 = np.tile(np.eye(4, dtype=np.float64)[:3, :], (5, 1, 1))  # (5, 3, 4)
-    out = _to_4x4(poses_34)
-    assert out.shape == (5, 4, 4)
-    assert np.all(out[:, 3, :] == [0, 0, 0, 1])
-
-
-def test_to_4x4_bad_shape():
-    with pytest.raises(ValueError):
-        _to_4x4(np.zeros((4, 3, 3)))
 
 
 # ------------------------------------------------------------------
@@ -172,13 +146,24 @@ def test_sequence_gap_prevents_cross_sequence_look_ahead():
     assert out[2, 0] == 0
 
 
-def test_compact_3x4_poses_accepted():
-    step = 2.0
-    poses_44 = _straight_line_poses(5, step)
-    poses_34 = poses_44[:, :3, :]  # (N, 3, 4)
+def test_compact_3x4_poses_rejected():
+    # Pose conversion is apairo_transform's job (PoseTo4x4); the preprocessor
+    # demands strict (4, 4) and says so.
+    poses_34 = _straight_line_poses(5)[:, :3, :]  # (N, 3, 4)
+    proc = TraversabilityFromTrajectory()
+    samples = [Sample(data={"lidar": np.zeros((5, 3), dtype=np.float32), "poses": poses_34[i]}) for i in range(len(poses_34))]
+    with pytest.raises(ValueError, match="PoseTo4x4"):
+        proc.process(iter(samples))
 
-    proc = TraversabilityFromTrajectory(robot_radius=0.5, height_min=-0.5, height_max=0.5)
-    xyz = np.array([[step, 0.0, 0.0]], dtype=np.float32)
-    samples = [Sample(data={"lidar": xyz, "poses": poses_34[i]}) for i in range(len(poses_34))]
-    out = proc.process(iter(samples))
-    assert out[0, 0] == 1
+
+def test_ragged_scans_return_per_frame_rows():
+    # Real lidar scans have a variable point count: the result is one row per
+    # frame (object array), each row aligned with its scan.
+    poses = _straight_line_poses(3)
+    sizes = [5, 3, 7]
+    xyz_per_frame = [np.zeros((s, 3), dtype=np.float32) for s in sizes]
+    proc = TraversabilityFromTrajectory()
+    out = proc.process(iter(_samples(poses, xyz_per_frame=xyz_per_frame)))
+    assert out.dtype == object
+    assert [len(row) for row in out] == sizes
+    assert all(row.dtype == np.uint8 for row in out)

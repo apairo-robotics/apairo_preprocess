@@ -31,8 +31,6 @@ from apairo.core.preprocessor import SequencePreprocessor
 from apairo.core.sample import Sample
 from apairo_transform import RangeFilter
 
-
-
 class TraversabilityFromTrajectory(SequencePreprocessor):
     """Label each point traversable if it lies in the robot's forward footprint.
 
@@ -162,4 +160,11 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
 
             results.append(trav.astype(np.uint8))
 
-        return np.stack(results)
+        # Uniform scans stack to (N, P) as before; ragged scans (real lidar,
+        # variable return count) become an object array of per-frame rows,
+        # which the per-frame runner and direct callers iterate identically.
+        if len({len(r) for r in results}) <= 1:
+            return np.stack(results)
+        out = np.empty(n, dtype=object)
+        out[:] = results
+        return out
