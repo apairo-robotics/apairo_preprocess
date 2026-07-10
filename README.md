@@ -1,6 +1,6 @@
 # apairo-preprocess
 
-Preprocessing pipelines for [apairo](https://github.com/apairo-robotics/apairo) datasets — LiDAR odometry, ground segmentation, and traversability ground truth generation.
+Preprocessing pipelines for [apairo](https://github.com/apairo-robotics/apairo) datasets — LiDAR odometry, ground segmentation, camera projection, and traversability ground truth generation.
 
 ---
 
@@ -59,6 +59,32 @@ Binary traversability labels (1 = traversable, 0 = not).
 |---|---|---|
 | `TraversabilityFromLabels` | `trav_label` | Maps semantic class IDs to binary traversable/non-traversable |
 | `TraversabilityFromTrajectory` | `trav_traj` | Labels points inside the robot's forward footprint along the trajectory |
+
+### Camera projection
+
+Atomic bridges between the point cloud and image spaces.  All outputs are
+**row-aligned** with the lidar scan, so any per-point channel composes with
+the projection by row index.
+
+| Class | Output channel | Input channels | Output |
+|---|---|---|---|
+| `LidarCameraProjection` | `lidar_uv` | lidar only (extrinsics/intrinsics are static) | `(N, 3)` float32 `[u, v, depth]`, NaN outside the frustum |
+| `PointFeaturesFromImage` | `point_features` | `lidar_uv` + image | `(N, C)` image values per point (e.g. RGB) — image → cloud |
+| `ImageMaskFromPointLabels` | `trav_mask` | `trav_traj` + `lidar_uv` | `(H, W)` uint8 label mask, 255 = no data — cloud → image |
+
+Pixel conflicts resolve to the nearest point (depth ordering); an optional
+occlusion filter (`occlusion_bin_px`) drops points hidden behind nearer
+returns so ground behind an obstacle does not bleed onto its pixels.
+Both halves of the projection come from the dataset calibration: the
+extrinsic via `ds.calibration.get_tf(lidar_frame, camera_frame)`, the
+intrinsics via `ds.calibration.get_intrinsics(camera_frame)`.
+
+**Asynchronous datasets:** `LidarCameraProjection` streams a single channel
+and runs anywhere.  The two multi-channel preprocessors run via
+`run_preprocess` on synchronous (profiled) datasets only; on an async dataset
+(TartanDrive, raw rigs) run them over a `synchronize()` view and persist with
+`ChannelWriter` — see
+[`examples/traversability_image_mask.py`](examples/traversability_image_mask.py).
 
 ---
 
@@ -137,6 +163,43 @@ Goose3DDataset.run_preprocess(
 # writes trav_traj/  (uint8: 1=traversable, 0=not)
 ```
 
+### Traversability mask in image space
+
+Projects the trajectory ground truth into the camera: `trav_traj` labels the
+points, `lidar_uv` places them in the image, `ImageMaskFromPointLabels`
+paints the mask.
+
+```python
+from apairo_preprocess import ImageMaskFromPointLabels, LidarCameraProjection
+
+cal = Rellis3DDataset(dataset_dir, keys=["lidar"]).calibration
+cam = cal.get_intrinsics("camera")               # K, distortion, image size
+T = cal.get_tf("lidar", "camera")                # lidar -> camera optical frame
+
+Rellis3DDataset.run_preprocess(
+    LidarCameraProjection(intrinsics=cam, extrinsics=T),
+    dataset_dir,
+)
+Rellis3DDataset.run_preprocess(
+    ImageMaskFromPointLabels(image_size=(cam.height, cam.width), radius=2, occlusion_bin_px=8),
+    dataset_dir,
+)
+# writes lidar_uv/  (float32 [u, v, depth] per point)
+#    and trav_mask/ (uint8 per pixel: 1=traversable, 0=not, 255=no data)
+```
+
+To sanity-check calibration and projection first, colour the cloud with
+camera RGB and inspect it in a 3-D viewer (projector, apairo_rr):
+
+```python
+from apairo_preprocess import PointFeaturesFromImage
+
+Rellis3DDataset.run_preprocess(
+    PointFeaturesFromImage(image_key="image", output_key="lidar_rgb"),
+    dataset_dir,
+)
+```
+
 ---
 
 ## Examples
@@ -147,6 +210,7 @@ Ready-to-run scripts in [`examples/`](examples/):
 python examples/kissicp_odometry.py /data/Rellis-3D/00000 --dataset rellis
 python examples/traversability_from_labels.py /data/Rellis-3D/00000
 python examples/traversability_from_trajectory.py /data/goose/seq_001
+python examples/traversability_image_mask.py /data/tartan/seq --lidar-frame velodyne --camera-frame multisense_left --rgb
 ```
 
 ---
