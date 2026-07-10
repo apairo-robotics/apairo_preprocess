@@ -211,6 +211,9 @@ python examples/kissicp_odometry.py /data/Rellis-3D/00000 --dataset rellis
 python examples/traversability_from_labels.py /data/Rellis-3D/00000
 python examples/traversability_from_trajectory.py /data/goose/seq_001
 python examples/traversability_image_mask.py /data/tartan/seq --lidar-frame velodyne --camera-frame multisense_left --rgb
+
+# no dataset needed — synthetic scene, renders every pipeline stage (needs matplotlib)
+python examples/projection_pipeline_demo.py --out-dir /tmp/projection_demo
 ```
 
 ---
