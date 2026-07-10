@@ -128,6 +128,25 @@ def test_forward_window_limits_look_ahead():
     assert out[0, 0] == 0
 
 
+def test_forward_distance_caps_look_ahead_by_path_length():
+    step = 2.0
+    poses = _straight_line_poses(5, step)  # x = 0, 2, 4, 6, 8
+    # Seen from frame 0 the point sits on the pose at x = 4, i.e. 4 m of path away.
+    xyz = np.array([[2 * step, 0.0, 0.0]], dtype=np.float32)
+    samples = lambda: iter(
+        [Sample(data={"lidar": xyz, "poses": poses[i]}) for i in range(5)]
+    )
+    kwargs = dict(robot_radius=0.5, height_min=-0.5, height_max=0.5)
+
+    assert TraversabilityFromTrajectory(**kwargs).process(samples())[0, 0] == 1
+    # 3 m of path from frame 0 only reaches the pose at x=2: x=4 is out.
+    proc = TraversabilityFromTrajectory(**kwargs, forward_distance=3.0)
+    assert proc.process(samples())[0, 0] == 0
+    # The cap is inclusive: 4 m of path reaches the pose the point sits on.
+    proc = TraversabilityFromTrajectory(**kwargs, forward_distance=4.0)
+    assert proc.process(samples())[0, 0] == 1
+
+
 def test_sequence_gap_prevents_cross_sequence_look_ahead():
     step = 2.0
     poses = np.tile(np.eye(4, dtype=np.float64), (6, 1, 1))

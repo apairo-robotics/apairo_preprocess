@@ -50,6 +50,12 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
                                position (metres, ≥ 0).
         forward_window:        Maximum number of future poses to look ahead.
                                ``None`` (default) uses the entire remaining trajectory.
+        forward_distance:      Maximum *path length* (metres) of future trajectory
+                               to consider.  Caps the look-ahead where the path
+                               loops back near already-seen terrain: without it, a
+                               point can be labelled traversable because a much
+                               later part of the trajectory passes nearby.
+                               ``None`` (default) does not cap by distance.
         sequence_gap:          Distance threshold (metres) to detect sequence
                                boundaries and avoid look-ahead across discontinuous
                                sessions.
@@ -79,6 +85,7 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
         height_min: float = -0.3,
         height_max: float = 0.5,
         forward_window: int | None = None,
+        forward_distance: float | None = None,
         sequence_gap: float = 5.0,
         near_exclusion_radius: float = 0.0,
         near_exclusion_norm: float = np.inf,
@@ -90,6 +97,7 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
         self._height_min = height_min
         self._height_max = height_max
         self._forward_window = forward_window
+        self._forward_distance = forward_distance
         self._sequence_gap = sequence_gap
         self._near_filter = (
             RangeFilter(min=near_exclusion_radius, max=None, norm=near_exclusion_norm)
@@ -122,6 +130,9 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
         ends = np.concatenate([boundaries, [n - 1]])
         seq_end = ends[np.searchsorted(ends, np.arange(n))]
 
+        # Cumulative path length, for the forward_distance cap.
+        path = np.concatenate([[0.0], np.cumsum(dists)])
+
         results = []
         for idx, sample in enumerate(all_samples):
             pc = np.asarray(sample.data[self._lidar_key])
@@ -132,13 +143,14 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
             xyz_h = np.column_stack([xyz_sensor, np.ones(n_pts)])
             xyz_world = (T @ xyz_h.T).T[:, :3]
 
-            seq_end_idx = int(seq_end[idx]) + 1
-            end = min(
-                idx + 1 + self._forward_window
-                if self._forward_window is not None
-                else seq_end_idx,
-                seq_end_idx,
-            )
+            end = int(seq_end[idx]) + 1
+            if self._forward_window is not None:
+                end = min(end, idx + 1 + self._forward_window)
+            if self._forward_distance is not None:
+                end = min(
+                    end,
+                    int(np.searchsorted(path, path[idx] + self._forward_distance, side="right")),
+                )
             future_pos = poses[idx + 1 : end, :3, 3]
 
             if len(future_pos) == 0:
