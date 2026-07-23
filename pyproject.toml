@@ -9,8 +9,8 @@ dependencies = [
     "tqdm",
     "cloth-simulation-filter",
 
-    "apairo @ git+https://github.com/apairo-robotics/apairo.git",
-    "apairo-transform @ git+ssh://git@github.com/apairo-robotics/apairo_transform.git",
+    "apairo>=0.6",
+    "apairo-transform @ git+https://github.com/apairo-robotics/apairo_transform.git",
 ]
 
 [project.optional-dependencies]
