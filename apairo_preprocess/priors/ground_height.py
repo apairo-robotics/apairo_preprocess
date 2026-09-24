@@ -16,13 +16,13 @@ class GroundHeightFromLabels(FramePreprocessor):
 
     Takes the output of any ground segmentation preprocessor
     (``GroundSegmentationCSF``, ``GroundSegmentationRANSAC``,
-    ``TerraSegGroundSegmentation``) and computes the signed height (m) of
+    ``GroundSegmentationFromLabels``) and computes the signed height (m) of
     each voxel above the nearest ground point in XY.
 
     Args:
         ground_key:    Input channel for binary ground labels (0=ground,
                        1=non-ground).  Typically ``"ground_csf"``,
-                       ``"ground_ransac"``, or ``"terraseg_ground"``.
+                       ``"ground_ransac"``, or ``"ground_labels"``.
         voxelised_key: Input channel for the voxelised point cloud
                        (shape N x D≥3).
         output_key:    Override the default channel name ``"ground_height"``.

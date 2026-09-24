@@ -13,11 +13,6 @@ dependencies = [
     "apairo-transform @ git+https://github.com/apairo-robotics/apairo_transform.git",
 ]
 
-[project.optional-dependencies]
-terraseg = [
-    "ptv3 @ git+https://github.com/TedLentsch/TerraSeg.git#subdirectory=ptv3",
-    "terraseg @ git+https://github.com/TedLentsch/TerraSeg.git#subdirectory=terraseg_lib",
-]
 [tool.setuptools.packages.find]
 where = ["."]
 

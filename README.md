@@ -17,7 +17,6 @@ pip install git+https://github.com/apairo-robotics/apairo_preprocess.git
 | `KissICPOdometry` | KISS-ICP | `pip install kiss-icp` |
 | `GICPOdometry` | Open3D | `pip install open3d` |
 | `GroundSegmentationCSF` / `GroundHeightFromLabels` (CSF backend) | CSF | `pip install cloth-simulation-filter` |
-| `TerraSegGroundSegmentation` | [TerraSeg](https://github.com/TedLentsch/TerraSeg) | `pip install git+https://github.com/TedLentsch/TerraSeg.git` |
 
 Requires Python ≥ 3.11.
 
@@ -40,7 +39,7 @@ Binary ground/non-ground labels (0 = ground, 1 = non-ground). All three algorith
 |---|---|---|---|
 | `GroundSegmentationCSF` | `ground_csf` | Cloth Simulation Filter — accurate on uneven terrain | `CSF` |
 | `GroundSegmentationRANSAC` | `ground_ransac` | RANSAC plane fitting — fast, assumes flat ground | — |
-| `TerraSegGroundSegmentation` | `terraseg_ground` | Self-supervised ML model (TerraSeg) | `terraseg` |
+| `GroundSegmentationFromLabels` | `ground_labels` | Maps existing semantic class IDs to ground/non-ground | — |
 
 ### Priors
 
@@ -94,18 +93,17 @@ and runs anywhere.  The two multi-channel preprocessors run via
 
 ```python
 from apairo.dataset.rellis import Rellis3DDataset
-from apairo_preprocess import GroundSegmentationCSF, GroundSegmentationRANSAC, TerraSegGroundSegmentation
+from apairo_preprocess import GroundSegmentationCSF, GroundSegmentationFromLabels, GroundSegmentationRANSAC
 
 dataset_dir = "/data/Rellis-3D/00000"
 
-# Classical methods (no GPU required)
 Rellis3DDataset.run_preprocess(GroundSegmentationRANSAC(), dataset_dir)
 Rellis3DDataset.run_preprocess(GroundSegmentationCSF(), dataset_dir)   # requires: pip install CSF
 
-# ML-based (requires: pip install git+https://github.com/TedLentsch/TerraSeg.git)
-Rellis3DDataset.run_preprocess(TerraSegGroundSegmentation(variant="S"), dataset_dir)
+# From existing semantic labels (default ground IDs are for RELLIS-3D)
+Rellis3DDataset.run_preprocess(GroundSegmentationFromLabels(), dataset_dir)
 
-# writes ground_ransac/, ground_csf/, terraseg_ground/  (uint8: 0=ground, 1=non-ground)
+# writes ground_ransac/, ground_csf/, ground_labels/  (uint8: 0=ground, 1=non-ground)
 ```
 
 ### Height above ground (prior)
@@ -123,7 +121,7 @@ Rellis3DDataset.run_preprocess(
 # writes ground_height/  (float32, metres above nearest ground point)
 ```
 
-`GroundHeightFromLabels` accepts any ground key — swap `"ground_csf"` for `"ground_ransac"` or `"terraseg_ground"` to change the backend without re-running CSF.
+`GroundHeightFromLabels` accepts any ground key — swap `"ground_csf"` for `"ground_ransac"` or `"ground_labels"` to change the backend without re-running CSF.
 
 ### Traversability from semantic labels
 

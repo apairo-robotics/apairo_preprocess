@@ -19,8 +19,7 @@ class GroundSegmentationFromLabels(FramePreprocessor):
     ``ground_ids``, non-ground (1) otherwise.
 
     Output labels: **0 = ground, 1 = non-ground** — same convention as
-    ``GroundSegmentationCSF``, ``GroundSegmentationRANSAC``, and
-    ``TerraSegGroundSegmentation``.
+    ``GroundSegmentationCSF`` and ``GroundSegmentationRANSAC``.
 
     Default ground IDs for RELLIS-3D::
 
