@@ -29,7 +29,6 @@ class GroundHeightFromLabels(FramePreprocessor):
     """
 
     output_key: ClassVar[str] = "ground_height"
-    output_loader: ClassVar[str] = "npys"
     input_keys: ClassVar[list[str]] = ["voxelised", "ground_labels"]
     timestamps_from: ClassVar[str] = "voxelised"
     sources: ClassVar[list[str]] = ["voxelised", "ground_labels"]

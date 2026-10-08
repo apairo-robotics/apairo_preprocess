@@ -61,7 +61,6 @@ class GroundSegmentationCSF(FramePreprocessor):
     """
 
     output_key: ClassVar[str] = "ground_csf"
-    output_loader: ClassVar[str] = "npys"
     input_keys: ClassVar[list[str]] = ["voxelised"]
     timestamps_from: ClassVar[str] = "voxelised"
     sources: ClassVar[list[str]] = ["voxelised"]

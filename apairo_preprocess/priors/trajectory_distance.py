@@ -55,7 +55,6 @@ class TrajectoryDistance(FramePreprocessor):
     """
 
     output_key: ClassVar[str] = "trajectory_distance"
-    output_loader: ClassVar[str] = "npys"
     input_keys: ClassVar[list[str]] = ["voxelised", "poses"]
     timestamps_from: ClassVar[str] = "voxelised"
     sources: ClassVar[list[str]] = ["voxelised", "poses"]

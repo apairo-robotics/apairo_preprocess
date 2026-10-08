@@ -87,7 +87,6 @@ class BEVRasterisation(FramePreprocessor):
     """
 
     output_key: ClassVar[str] = "bev"
-    output_loader: ClassVar[str] = "npys"
     input_keys: ClassVar[list[str]] = ["lidar", "values"]
     timestamps_from: ClassVar[str] = "lidar"
     sources: ClassVar[list[str]] = ["lidar", "values"]

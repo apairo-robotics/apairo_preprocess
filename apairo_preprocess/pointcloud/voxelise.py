@@ -80,7 +80,6 @@ class VoxelisePointCloud(FramePreprocessor):
     """
 
     output_key: ClassVar[str] = "voxelised"
-    output_loader: ClassVar[str] = "npys"
     input_keys: ClassVar[list[str]] = ["lidar"]
     timestamps_from: ClassVar[str] = "lidar"
     sources: ClassVar[list[str]] = ["lidar"]
@@ -169,7 +168,6 @@ class VoxeliseLabels(FramePreprocessor):
     """
 
     output_key: ClassVar[str] = "voxelised_labels"
-    output_loader: ClassVar[str] = "npys"
     input_keys: ClassVar[list[str]] = ["lidar", "labels"]
     timestamps_from: ClassVar[str] = "lidar"
     sources: ClassVar[list[str]] = ["lidar", "labels"]
@@ -247,7 +245,6 @@ class VoxeliseCoords(FramePreprocessor):
     """
 
     output_key: ClassVar[str] = "voxel_coords"
-    output_loader: ClassVar[str] = "npys"
     input_keys: ClassVar[list[str]] = ["lidar"]
     timestamps_from: ClassVar[str] = "lidar"
     sources: ClassVar[list[str]] = ["lidar"]

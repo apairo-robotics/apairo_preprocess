@@ -72,7 +72,6 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
     """
 
     output_key: ClassVar[str] = "trav_traj"
-    output_loader: ClassVar[str] = "npys"
     input_keys: ClassVar[list[str]] = ["lidar", "poses"]
     timestamps_from: ClassVar[str] = "lidar"
     sources: ClassVar[list[str]] = ["lidar", "poses"]

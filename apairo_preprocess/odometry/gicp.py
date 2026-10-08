@@ -43,7 +43,6 @@ class GICPOdometry(FramePreprocessor):
     """
 
     output_key: ClassVar[str] = "gicp_poses"
-    output_loader: ClassVar[str] = "npys"
     input_keys: ClassVar[list[str]] = ["lidar"]
     timestamps_from: ClassVar[str] = "lidar"
     sources: ClassVar[list[str]] = ["lidar"]

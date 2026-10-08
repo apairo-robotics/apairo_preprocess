@@ -22,8 +22,10 @@ def test_default_output_key():
     assert VoxeliseCoords().output_key == "voxel_coords"
 
 
-def test_default_output_loader():
-    assert VoxeliseCoords().output_loader == "npys"
+def test_the_output_format_is_left_to_apairo():
+    # Written in its input channel's format when that format can hold it,
+    # else in npys; run_preprocess(..., output_format=...) picks another.
+    assert VoxeliseCoords().output_loader is None
 
 
 def test_custom_output_key():
