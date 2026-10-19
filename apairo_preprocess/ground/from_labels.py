@@ -51,6 +51,6 @@ class GroundSegmentationFromLabels(FramePreprocessor):
         if output_key is not None:
             self.output_key = output_key
 
-    def process(self, sample: Sample) -> np.ndarray:
+    def __call__(self, sample: Sample) -> np.ndarray:
         labels = np.asarray(sample.data[self._labels_key])
         return (~np.isin(labels, list(self._ground_ids))).astype(np.uint8)

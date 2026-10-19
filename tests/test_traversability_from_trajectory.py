@@ -31,7 +31,7 @@ def _proc(poses, **kwargs):
     """Run a TraversabilityFromTrajectory on a fixed pose sequence and return all outputs."""
     proc = TraversabilityFromTrajectory(**kwargs)
     samples = _samples(poses)
-    return proc.process(iter(samples))
+    return proc(iter(samples))
 
 
 # ------------------------------------------------------------------
@@ -82,7 +82,7 @@ def test_point_on_future_pose_is_traversable():
         Sample(data={"lidar": xyz, "poses": poses[i]})
         for i in range(len(poses))
     ]
-    out = proc.process(iter(samples))
+    out = proc(iter(samples))
     assert out[0, 0] == 1
 
 
@@ -92,7 +92,7 @@ def test_point_outside_xy_radius_not_traversable():
     proc = TraversabilityFromTrajectory(robot_radius=0.5)
     xyz = np.array([[step, 10.0, 0.0]], dtype=np.float32)
     samples = [Sample(data={"lidar": xyz, "poses": poses[i]}) for i in range(len(poses))]
-    out = proc.process(iter(samples))
+    out = proc(iter(samples))
     assert out[0, 0] == 0
 
 
@@ -103,9 +103,9 @@ def test_height_filter():
     samples_high = [Sample(data={"lidar": np.array([[step, 0.0, 1.0]], dtype=np.float32), "poses": poses[i]}) for i in range(len(poses))]
     samples_low = [Sample(data={"lidar": np.array([[step, 0.0, -0.5]], dtype=np.float32), "poses": poses[i]}) for i in range(len(poses))]
     samples_ok = [Sample(data={"lidar": np.array([[step, 0.0, 0.2]], dtype=np.float32), "poses": poses[i]}) for i in range(len(poses))]
-    assert proc.process(iter(samples_high))[0, 0] == 0
-    assert proc.process(iter(samples_low))[0, 0] == 0
-    assert proc.process(iter(samples_ok))[0, 0] == 1
+    assert proc(iter(samples_high))[0, 0] == 0
+    assert proc(iter(samples_low))[0, 0] == 0
+    assert proc(iter(samples_ok))[0, 0] == 1
 
 
 def test_last_frame_all_zeros():
@@ -123,7 +123,7 @@ def test_forward_window_limits_look_ahead():
     proc = TraversabilityFromTrajectory(robot_radius=0.5, forward_window=1)
     xyz = np.array([[3 * step, 0.0, 0.0]], dtype=np.float32)
     samples = [Sample(data={"lidar": xyz, "poses": poses[i]}) for i in range(n)]
-    out = proc.process(iter(samples))
+    out = proc(iter(samples))
     # Frame 0 with window=1 only sees poses[1]; point at 3*step is out of window.
     assert out[0, 0] == 0
 
@@ -138,13 +138,13 @@ def test_forward_distance_caps_look_ahead_by_path_length():
     )
     kwargs = dict(robot_radius=0.5, height_min=-0.5, height_max=0.5)
 
-    assert TraversabilityFromTrajectory(**kwargs).process(samples())[0, 0] == 1
+    assert TraversabilityFromTrajectory(**kwargs)(samples())[0, 0] == 1
     # 3 m of path from frame 0 only reaches the pose at x=2: x=4 is out.
     proc = TraversabilityFromTrajectory(**kwargs, forward_distance=3.0)
-    assert proc.process(samples())[0, 0] == 0
+    assert proc(samples())[0, 0] == 0
     # The cap is inclusive: 4 m of path reaches the pose the point sits on.
     proc = TraversabilityFromTrajectory(**kwargs, forward_distance=4.0)
-    assert proc.process(samples())[0, 0] == 1
+    assert proc(samples())[0, 0] == 1
 
 
 def test_sequence_gap_prevents_cross_sequence_look_ahead():
@@ -160,7 +160,7 @@ def test_sequence_gap_prevents_cross_sequence_look_ahead():
     proc = TraversabilityFromTrajectory(robot_radius=0.5, sequence_gap=5.0)
     xyz = np.array([[100.0, 0.0, 0.0]], dtype=np.float32)
     samples = [Sample(data={"lidar": xyz, "poses": poses[i]}) for i in range(6)]
-    out = proc.process(iter(samples))
+    out = proc(iter(samples))
     # Frame 2 is the last in seq 1; point at x=100 (seq 2) must NOT be traversable.
     assert out[2, 0] == 0
 
@@ -172,7 +172,7 @@ def test_compact_3x4_poses_rejected():
     proc = TraversabilityFromTrajectory()
     samples = [Sample(data={"lidar": np.zeros((5, 3), dtype=np.float32), "poses": poses_34[i]}) for i in range(len(poses_34))]
     with pytest.raises(ValueError, match="PoseTo4x4"):
-        proc.process(iter(samples))
+        proc(iter(samples))
 
 
 def test_ragged_scans_return_per_frame_rows():
@@ -182,7 +182,7 @@ def test_ragged_scans_return_per_frame_rows():
     sizes = [5, 3, 7]
     xyz_per_frame = [np.zeros((s, 3), dtype=np.float32) for s in sizes]
     proc = TraversabilityFromTrajectory()
-    out = proc.process(iter(_samples(poses, xyz_per_frame=xyz_per_frame)))
+    out = proc(iter(_samples(poses, xyz_per_frame=xyz_per_frame)))
     assert out.dtype == object
     assert [len(row) for row in out] == sizes
     assert all(row.dtype == np.uint8 for row in out)

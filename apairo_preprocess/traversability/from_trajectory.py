@@ -5,7 +5,7 @@ robot's 2-D footprint projected along any **future** pose — i.e. positions
 the robot has not yet visited.
 
 Poses are read from the dataset via ``poses_key`` (declared in
-``input_keys``).  The full trajectory is available in ``process()`` because
+``input_keys``).  The full trajectory is available in ``__call__`` because
 :class:`SequencePreprocessor` receives an iterator over all frames at once.
 
 Poses must be ``(4, 4)`` float64 homogeneous matrices.  Apply
@@ -35,7 +35,7 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
     """Label each point traversable if it lies in the robot's forward footprint.
 
     Poses and point clouds are loaded from the dataset via ``input_keys``.
-    Sequence boundary detection and look-ahead are computed in ``process()``
+    Sequence boundary detection and look-ahead are computed in ``__call__``
     where the full trajectory is available.
 
     Args:
@@ -110,7 +110,7 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
         if output_key is not None:
             self.output_key = output_key
 
-    def process(self, frames: Iterator[Sample]) -> np.ndarray:
+    def __call__(self, frames: Iterator[Sample]) -> np.ndarray:
         all_samples = list(frames)
         n = len(all_samples)
 

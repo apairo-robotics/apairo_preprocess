@@ -87,7 +87,7 @@ class GroundSegmentationRANSAC(FramePreprocessor):
         if output_key is not None:
             self.output_key = output_key
 
-    def process(self, sample: Sample) -> np.ndarray:
+    def __call__(self, sample: Sample) -> np.ndarray:
         xyz = np.asarray(sample.data[self._voxelised_key], dtype=np.float64)[:, :3]
         normal, d = _ransac_plane(
             xyz, n_iter=self._n_iter, inlier_threshold=self._inlier_threshold

@@ -69,7 +69,7 @@ class GICPOdometry(FramePreprocessor):
         self._prev_pcd = None
         self._T_accum = np.eye(4, dtype=np.float64)
 
-    def process(self, sample: Sample) -> np.ndarray:
+    def __call__(self, sample: Sample) -> np.ndarray:
         pc = np.asarray(sample.data[self._lidar_key])
         xyz = pc[:, :3].astype(np.float64)
         xyz = xyz[np.linalg.norm(xyz, axis=1) < self._max_range]

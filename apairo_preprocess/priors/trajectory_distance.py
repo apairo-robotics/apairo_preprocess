@@ -80,7 +80,7 @@ class TrajectoryDistance(FramePreprocessor):
         if output_key is not None:
             self.output_key = output_key
 
-    def process(self, sample: Sample) -> np.ndarray:
+    def __call__(self, sample: Sample) -> np.ndarray:
         pc = np.asarray(sample.data[self._voxelised_key], dtype=np.float64)
         pose = np.asarray(sample.data[self._poses_key], dtype=np.float64)
         if pose.shape != (4, 4):

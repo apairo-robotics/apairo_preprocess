@@ -95,7 +95,7 @@ class RemoveRobotPoints(FramePreprocessor):
         if output_key is not None:
             self.output_key = output_key
 
-    def process(self, sample: Sample) -> np.ndarray:
+    def __call__(self, sample: Sample) -> np.ndarray:
         pc = np.asarray(sample.data[self._lidar_key], dtype=np.float64)
         if pc.ndim != 2 or pc.shape[1] < 3:
             raise ValueError(f"Point cloud must be (N, D>=3), got {pc.shape}")

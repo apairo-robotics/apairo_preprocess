@@ -77,7 +77,7 @@ class KissICPOdometry(FramePreprocessor):
         self._kiss = KissICP(config=cfg)
         self._deskew = deskew
 
-    def process(self, sample: Sample) -> np.ndarray:
+    def __call__(self, sample: Sample) -> np.ndarray:
         pc = np.asarray(sample.data[self._lidar_key], dtype=np.float64)
         xyz = pc[:, :3]
         timestamps = pc[:, 3] if self._deskew and pc.shape[1] > 3 else np.zeros(len(xyz))
