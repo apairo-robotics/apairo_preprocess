@@ -56,7 +56,6 @@ class RemoveRobotPoints(FramePreprocessor):
     """
 
     output_key: ClassVar[str] = "lidar_no_robot"
-    output_loader: ClassVar[str] = "npys"
     input_keys: ClassVar[list[str]] = ["lidar"]
     timestamps_from: ClassVar[str] = "lidar"
     sources: ClassVar[list[str]] = ["lidar"]

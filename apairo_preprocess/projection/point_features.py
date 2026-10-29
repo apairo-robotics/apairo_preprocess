@@ -53,7 +53,6 @@ class PointFeaturesFromImage(FramePreprocessor):
     """
 
     output_key: ClassVar[str] = "point_features"
-    output_loader: ClassVar[str] = "npys"
     input_keys: ClassVar[list[str]] = ["lidar_uv", "image"]
     timestamps_from: ClassVar[str] = "lidar_uv"
     sources: ClassVar[list[str]] = ["lidar_uv", "image"]

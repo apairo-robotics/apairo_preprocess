@@ -9,7 +9,7 @@ dependencies = [
     "tqdm",
     "cloth-simulation-filter",
 
-    "apairo>=0.6",
+    "apairo>=0.9",  # output_loader optional: the format follows the input
     "apairo-transform @ git+https://github.com/apairo-robotics/apairo_transform.git",
 ]
 

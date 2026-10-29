@@ -22,8 +22,10 @@ def test_default_output_key():
     assert RemoveRobotPoints().output_key == "lidar_no_robot"
 
 
-def test_default_output_loader():
-    assert RemoveRobotPoints().output_loader == "npys"
+def test_the_output_format_is_left_to_apairo():
+    # Written in its input channel's format when that format can hold it,
+    # else in npys; run_preprocess(..., output_format=...) picks another.
+    assert RemoveRobotPoints().output_loader is None
 
 
 def test_custom_output_key():

@@ -33,7 +33,6 @@ class GroundSegmentationFromLabels(FramePreprocessor):
     """
 
     output_key: ClassVar[str] = "ground_labels"
-    output_loader: ClassVar[str] = "npys"
     input_keys: ClassVar[list[str]] = ["labels"]
     timestamps_from: ClassVar[str] = "lidar"
     sources: ClassVar[list[str]] = ["labels"]

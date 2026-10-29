@@ -67,7 +67,6 @@ class ImageMaskFromPointLabels(FramePreprocessor):
     """
 
     output_key: ClassVar[str] = "trav_mask"
-    output_loader: ClassVar[str] = "npys"
     input_keys: ClassVar[list[str]] = ["trav_traj", "lidar_uv"]
     timestamps_from: ClassVar[str] = "trav_traj"
     sources: ClassVar[list[str]] = ["trav_traj", "lidar_uv"]
