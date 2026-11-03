@@ -66,7 +66,7 @@ def main() -> None:
     # --- Step 2: traversability ---
     # Poses from KISS-ICP are already (4, 4) float64.  If you bring external
     # poses in another format (quaternion, Euler, compact 3×4), apply
-    # ds.transform(poses_key, PoseTo4x4()) from apairo_transform first.
+    # ds = ds.transform(poses_key, PoseTo4x4()) from apairo_transform first.
     print("Step 2/2  Computing traversability ground truth …")
     Goose3DDataset.run_preprocess(
         TraversabilityFromTrajectory(
