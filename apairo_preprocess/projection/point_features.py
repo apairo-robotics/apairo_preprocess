@@ -89,9 +89,13 @@ class PointFeaturesFromImage(FramePreprocessor):
         out = np.full((n, channels), self._fill_value, dtype=img.dtype)
 
         valid = np.isfinite(uv[:, 0])
-        cols = uv[valid, 0].astype(np.intp)
-        rows = uv[valid, 1].astype(np.intp)
-        if len(cols) and (cols.max() >= width or rows.max() >= height):
+        # floor, not astype: truncation would send u in (-1, 0) to column 0,
+        # and a negative index would silently wrap to the opposite edge.
+        cols = np.floor(uv[valid, 0]).astype(np.intp)
+        rows = np.floor(uv[valid, 1]).astype(np.intp)
+        if len(cols) and (
+            cols.min() < 0 or rows.min() < 0 or cols.max() >= width or rows.max() >= height
+        ):
             raise ValueError(
                 f"projection exceeds image bounds ({height}, {width}) — the "
                 f"projection was computed for a different image_size."

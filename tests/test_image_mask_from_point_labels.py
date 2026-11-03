@@ -171,3 +171,36 @@ def test_points_in_different_bins_not_occluded():
     )
     assert mask[2, 2] == 1
     assert mask[2, 10] == 1
+
+
+# ------------------------------------------------------------------
+# Coordinates on or outside the image edge (e.g. a projection channel
+# written before the float32 edge fix, or a hand-made one)
+# ------------------------------------------------------------------
+
+def test_point_on_far_edge_is_not_painted():
+    # u == width: outside [0, W). With a splat radius its neighbours must not
+    # be painted either -- the point is dropped as a whole, not partly.
+    mask = _mask([1], [[float(SIZE[1]), 3.0, 1.0]], radius=1)
+    assert (mask == 255).all()
+
+
+def test_point_on_bottom_edge_is_not_painted():
+    mask = _mask([1], [[3.0, float(SIZE[0]), 1.0]], radius=1)
+    assert (mask == 255).all()
+
+
+def test_point_on_far_edge_does_not_alias_occlusion_bin():
+    # cols // bin of u == width lands in the NEXT row's first bin when width is
+    # a multiple of the bin: a far point there must not occlude/void a valid one.
+    near_far_edge = [float(SIZE[1]), 0.0, 1.0]   # outside: must be ignored
+    valid = [0.0, 6.0, 9.0]                       # row 6, bin row 1, col bin 0
+    mask = _mask([1, 1], [near_far_edge, valid],
+                 occlusion_bin_px=6, occlusion_depth_margin=0.5)
+    assert mask[6, 0] == 1
+
+
+def test_negative_fraction_is_not_painted_on_column_zero():
+    # astype(int) truncates -0.5 to 0; floor gives -1 (outside).
+    mask = _mask([1], [[-0.5, 3.0, 1.0]])
+    assert (mask == 255).all()
