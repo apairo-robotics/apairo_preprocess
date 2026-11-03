@@ -99,3 +99,12 @@ def test_empty_projection():
     proc = PointFeaturesFromImage()
     out = proc(_sample(np.zeros((0, 3)), _image()))
     assert out.shape == (0, 3)
+
+
+@pytest.mark.parametrize("uv", [[[-3.0, 1.0, 5.0]], [[1.0, -2.0, 5.0]], [[-0.5, 1.0, 5.0]]])
+def test_negative_projection_rejected(uv):
+    # A negative index would wrap to the opposite image edge (and astype(int)
+    # truncates -0.5 to column 0): it must raise like the far-edge case.
+    proc = PointFeaturesFromImage()
+    with pytest.raises(ValueError):
+        proc(_sample(uv, _image()))

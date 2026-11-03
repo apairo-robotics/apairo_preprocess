@@ -166,8 +166,11 @@ class LidarCameraProjection(FramePreprocessor):
         if self._dist is not None:
             x, y = _distort_plumb_bob(x, y, self._dist)
 
-        u = self._K[0, 0] * x + self._K[0, 1] * y + self._K[0, 2]
-        v = self._K[1, 1] * y + self._K[1, 2]
+        # The bound test runs on the float32 values actually returned: a u
+        # just below the width in float64 can round up to exactly the width
+        # in float32, and must then be outside, not one pixel past the edge.
+        u = (self._K[0, 0] * x + self._K[0, 1] * y + self._K[0, 2]).astype(np.float32)
+        v = (self._K[1, 1] * y + self._K[1, 2]).astype(np.float32)
 
         in_image = (u >= 0) & (u < self._width) & (v >= 0) & (v < self._height)
         idx = np.flatnonzero(front)[in_image]
