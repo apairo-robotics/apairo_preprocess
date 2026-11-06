@@ -44,6 +44,23 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
                                float64.  Apply ``PoseTo4x4()`` from ``apairo_transform``
                                if needed.
         robot_radius:          Half-width of the robot footprint in XY (metres).
+                               Isotropic circle test, ignored when ``robot_length`` /
+                               ``robot_width`` are given.
+        robot_length:          Full length of the robot footprint along its heading
+                               (metres). Must be given together with ``robot_width``.
+                               When set, the footprint is a heading-aligned rectangle
+                               (matching the physical robot, e.g. its wheel-contact
+                               box) instead of ``robot_radius``'s isotropic circle —
+                               use this whenever the robot is not roughly as wide as
+                               it is long, since a circle sized to the robot's length
+                               over-labels its width (and vice versa). Heading is read
+                               from each future pose's own rotation matrix, not
+                               finite-differenced from consecutive positions, so it
+                               stays accurate even where the robot is nearly
+                               stationary (position noise dominates finite differences
+                               there).
+        robot_width:           Full width of the robot footprint, lateral to its
+                               heading (metres). See ``robot_length``.
         height_min:            Minimum point height relative to the nearest robot
                                position to be traversable (metres, ≤ 0).
         height_max:            Maximum point height relative to the nearest robot
@@ -81,6 +98,8 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
         lidar_key: str = "lidar",
         poses_key: str = "poses",
         robot_radius: float = 0.75,
+        robot_length: float | None = None,
+        robot_width: float | None = None,
         height_min: float = -0.3,
         height_max: float = 0.5,
         forward_window: int | None = None,
@@ -90,9 +109,15 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
         near_exclusion_norm: float = np.inf,
         output_key: str | None = None,
     ) -> None:
+        if (robot_length is None) != (robot_width is None):
+            raise ValueError("robot_length and robot_width must be given together")
+
         self._lidar_key = lidar_key
         self._poses_key = poses_key
         self._robot_radius = robot_radius
+        self._robot_length = robot_length
+        self._robot_width = robot_width
+        self._oriented = robot_length is not None
         self._height_min = height_min
         self._height_max = height_max
         self._forward_window = forward_window
@@ -132,6 +157,14 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
         # Cumulative path length, for the forward_distance cap.
         path = np.concatenate([[0.0], np.cumsum(dists)])
 
+        if self._oriented:
+            # Yaw from each pose's own rotation matrix -- robust where the robot is
+            # nearly stationary (finite-differenced heading is noise-dominated there).
+            headings = np.arctan2(poses[:, 1, 0], poses[:, 0, 0])
+            half_length = self._robot_length / 2.0
+            half_width = self._robot_width / 2.0
+            covering_radius = float(np.hypot(half_length, half_width))
+
         results = []
         for idx, sample in enumerate(all_samples):
             pc = np.asarray(sample.data[self._lidar_key])
@@ -156,16 +189,45 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
                 results.append(np.zeros(n_pts, dtype=np.uint8))
                 continue
 
-            tree = KDTree(future_pos[:, :2])
-            # workers=-1 deadlocks when called from a ThreadPoolExecutor (e.g. viewer)
-            dist_xy, nn_idx = tree.query(xyz_world[:, :2], k=1)
-            dz = xyz_world[:, 2] - future_pos[nn_idx, 2]
+            if self._oriented:
+                future_heading = headings[idx + 1 : end]
+                tree = KDTree(future_pos[:, :2])
+                # workers=-1 deadlocks when called from a ThreadPoolExecutor (e.g. viewer)
+                cand_lists = tree.query_ball_point(xyz_world[:, :2], r=covering_radius)
+                lengths = np.fromiter((len(c) for c in cand_lists), dtype=np.int64, count=n_pts)
+                trav = np.zeros(n_pts, dtype=bool)
+                n_pairs = int(lengths.sum())
+                if n_pairs > 0:
+                    point_idx = np.repeat(np.arange(n_pts), lengths)
+                    cand_idx = np.fromiter(
+                        (c for cl in cand_lists for c in cl), dtype=np.int64, count=n_pairs
+                    )
+                    ddx = xyz_world[point_idx, 0] - future_pos[cand_idx, 0]
+                    ddy = xyz_world[point_idx, 1] - future_pos[cand_idx, 1]
+                    th = future_heading[cand_idx]
+                    c, s = np.cos(th), np.sin(th)
+                    # world delta -> candidate pose's local frame (rotate by -heading)
+                    dx = c * ddx + s * ddy
+                    dy = -s * ddx + c * ddy
+                    dz_pair = xyz_world[point_idx, 2] - future_pos[cand_idx, 2]
+                    inside = (
+                        (np.abs(dx) <= half_length)
+                        & (np.abs(dy) <= half_width)
+                        & (dz_pair >= self._height_min)
+                        & (dz_pair <= self._height_max)
+                    )
+                    np.logical_or.at(trav, point_idx[inside], True)
+            else:
+                tree = KDTree(future_pos[:, :2])
+                # workers=-1 deadlocks when called from a ThreadPoolExecutor (e.g. viewer)
+                dist_xy, nn_idx = tree.query(xyz_world[:, :2], k=1)
+                dz = xyz_world[:, 2] - future_pos[nn_idx, 2]
 
-            trav = (
-                (dist_xy < self._robot_radius)
-                & (dz >= self._height_min)
-                & (dz <= self._height_max)
-            )
+                trav = (
+                    (dist_xy < self._robot_radius)
+                    & (dz >= self._height_min)
+                    & (dz <= self._height_max)
+                )
             if self._near_filter is not None:
                 trav &= self._near_filter.compute_mask(xyz_sensor)
 
