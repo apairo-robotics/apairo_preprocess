@@ -186,3 +186,115 @@ def test_ragged_scans_return_per_frame_rows():
     assert out.dtype == object
     assert [len(row) for row in out] == sizes
     assert all(row.dtype == np.uint8 for row in out)
+
+
+# ------------------------------------------------------------------
+# Oriented (heading-aligned rectangle) footprint
+# ------------------------------------------------------------------
+
+def _yaw_poses(n, step=2.0, yaw=0.0):
+    """N poses spaced `step` apart along a straight line at heading `yaw`."""
+    poses = np.tile(np.eye(4, dtype=np.float64), (n, 1, 1))
+    c, s = np.cos(yaw), np.sin(yaw)
+    poses[:, 0, 0], poses[:, 0, 1] = c, -s
+    poses[:, 1, 0], poses[:, 1, 1] = s, c
+    for i in range(n):
+        poses[i, 0, 3] = i * step * c
+        poses[i, 1, 3] = i * step * s
+    return poses
+
+
+def test_length_and_width_must_be_given_together():
+    with pytest.raises(ValueError, match="robot_length and robot_width"):
+        TraversabilityFromTrajectory(robot_length=1.05)
+    with pytest.raises(ValueError, match="robot_length and robot_width"):
+        TraversabilityFromTrajectory(robot_width=0.725)
+
+
+def test_oriented_point_ahead_on_centerline_is_traversable():
+    step = 2.0
+    poses = _straight_line_poses(5, step)
+    proc = TraversabilityFromTrajectory(
+        robot_length=1.0, robot_width=0.6, height_min=-0.5, height_max=0.5
+    )
+    xyz = np.array([[step, 0.0, 0.0]], dtype=np.float32)
+    samples = [Sample(data={"lidar": xyz, "poses": poses[i]}) for i in range(len(poses))]
+    out = proc.process(iter(samples))
+    assert out[0, 0] == 1
+
+
+def test_oriented_rejects_lateral_offset_a_circle_would_accept():
+    # robot_radius=0.9 (diameter 1.8m) would accept a 0.7m lateral offset; a
+    # heading-aligned box that is only 0.6m wide (half_width=0.3) must not.
+    step = 2.0
+    poses = _straight_line_poses(5, step)
+    lateral_offset = 0.7
+    xyz = np.array([[step, lateral_offset, 0.0]], dtype=np.float32)
+    samples = [Sample(data={"lidar": xyz, "poses": poses[i]}) for i in range(len(poses))]
+
+    circle = TraversabilityFromTrajectory(robot_radius=0.9, height_min=-0.5, height_max=0.5)
+    assert circle.process(iter(samples))[0, 0] == 1
+
+    box = TraversabilityFromTrajectory(
+        robot_length=1.0, robot_width=0.6, height_min=-0.5, height_max=0.5
+    )
+    assert box.process(iter(samples))[0, 0] == 0
+
+
+def test_oriented_accepts_lateral_offset_within_half_width():
+    step = 2.0
+    poses = _straight_line_poses(5, step)
+    xyz = np.array([[step, 0.25, 0.0]], dtype=np.float32)
+    samples = [Sample(data={"lidar": xyz, "poses": poses[i]}) for i in range(len(poses))]
+    proc = TraversabilityFromTrajectory(
+        robot_length=1.0, robot_width=0.6, height_min=-0.5, height_max=0.5
+    )
+    assert proc.process(iter(samples))[0, 0] == 1
+
+
+def test_oriented_uses_pose_rotation_for_heading_on_a_turn():
+    # A 90-degree turn: the second pose's box is oriented along +Y, not +X.
+    # A point that sits laterally in world-X but longitudinally in the turned
+    # frame must only be accepted once the box is heading-aligned.
+    poses = np.tile(np.eye(4, dtype=np.float64), (2, 1, 1))
+    poses[0] = _yaw_poses(1, yaw=0.0)[0]
+    poses[1] = _yaw_poses(1, yaw=np.pi / 2)[0]
+    poses[1, 0, 3] = 2.0  # pose 1 is 2m ahead on +X, but facing +Y
+
+    proc = TraversabilityFromTrajectory(
+        robot_length=1.0, robot_width=0.4, height_min=-0.5, height_max=0.5
+    )
+    # Point 0.15m to the +X side of pose 1 (within half_width if box faces +Y,
+    # since local-y there maps to world-x displacement from pose 1's origin).
+    xyz = np.array([[2.15, 0.0, 0.0]], dtype=np.float32)
+    samples = [Sample(data={"lidar": xyz, "poses": poses[0]}), Sample(data={"lidar": xyz, "poses": poses[1]})]
+    out = proc.process(iter(samples))
+    assert out[0, 0] == 1  # 0.15m lateral to pose1's local frame is inside half_width=0.2
+
+    xyz_far = np.array([[2.35, 0.0, 0.0]], dtype=np.float32)
+    samples_far = [Sample(data={"lidar": xyz_far, "poses": poses[0]}), Sample(data={"lidar": xyz_far, "poses": poses[1]})]
+    out_far = proc.process(iter(samples_far))
+    assert out_far[0, 0] == 0  # 0.35m lateral is outside half_width=0.2
+
+
+def test_oriented_height_filter_still_applies():
+    step = 2.0
+    poses = _straight_line_poses(5, step)
+    proc = TraversabilityFromTrajectory(
+        robot_length=1.0, robot_width=0.6, height_min=-0.3, height_max=0.5
+    )
+    samples_high = [Sample(data={"lidar": np.array([[step, 0.0, 1.0]], dtype=np.float32), "poses": poses[i]}) for i in range(len(poses))]
+    samples_ok = [Sample(data={"lidar": np.array([[step, 0.0, 0.2]], dtype=np.float32), "poses": poses[i]}) for i in range(len(poses))]
+    assert proc.process(iter(samples_high))[0, 0] == 0
+    assert proc.process(iter(samples_ok))[0, 0] == 1
+
+
+def test_oriented_ragged_scans_return_per_frame_rows():
+    poses = _straight_line_poses(3)
+    sizes = [5, 3, 7]
+    xyz_per_frame = [np.zeros((s, 3), dtype=np.float32) for s in sizes]
+    proc = TraversabilityFromTrajectory(robot_length=1.0, robot_width=0.6)
+    out = proc.process(iter(_samples(poses, xyz_per_frame=xyz_per_frame)))
+    assert out.dtype == object
+    assert [len(row) for row in out] == sizes
+    assert all(row.dtype == np.uint8 for row in out)
