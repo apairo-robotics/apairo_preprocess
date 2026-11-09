@@ -5,3 +5,5 @@
 **egg-info**
 
 build
+# CI workflows, despite the hidden-directory rule above
+!.github/

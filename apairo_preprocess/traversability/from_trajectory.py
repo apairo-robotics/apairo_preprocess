@@ -9,7 +9,7 @@ Poses are read from the dataset via ``poses_key`` (declared in
 :class:`SequencePreprocessor` receives an iterator over all frames at once.
 
 Poses must be ``(4, 4)`` float64 homogeneous matrices.  Apply
-``ds.transform(poses_key, PoseTo4x4())`` from ``apairo_transform`` beforehand
+``ds = ds.transform(poses_key, PoseTo4x4())`` from ``apairo_transform`` beforehand
 if your poses are stored in another format (quaternion, Euler, compact 3×4).
 
 Typical usage::

@@ -7,8 +7,10 @@ Preprocessing pipelines for [apairo](https://github.com/apairo-robotics/apairo) 
 ## Installation
 
 ```bash
-pip install git+https://github.com/apairo-robotics/apairo_preprocess.git
+pip install apairo-preprocess
 ```
+
+It brings `apairo` (≥ 0.9) and `apairo-transform` (≥ 0.3).
 
 ### Optional dependencies
 
