@@ -1,20 +1,49 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "apairo-preprocess"
-version = "0.1.0"
-description = "Preprocessing pipelines for apairo datasets"
+version = "0.2.0"
+description = "Preprocessing for apairo datasets: odometry, ground segmentation, projection, traversability labels"
+readme = "README.md"
+authors = [
+  { name = "Augustin Bresset", email = "augustin.bresset@gmail.com" },
+]
+license = { text = "MIT" }
+requires-python = ">=3.11"
+keywords = ["apairo", "lidar", "point-cloud", "traversability", "ground-segmentation", "robotics"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
-    "numpy",
+    "numpy>=1.26",
     "scipy",
     "pyyaml",
     "tqdm",
     "cloth-simulation-filter",
-
     "apairo>=0.9",  # output_loader optional: the format follows the input
-    "apairo-transform @ git+https://github.com/apairo-robotics/apairo_transform.git",
+    "apairo-transform>=0.3",
 ]
+
+[project.urls]
+Homepage = "https://apairo-robotics.github.io/"
+Repository = "https://github.com/apairo-robotics/apairo_preprocess"
+Issues = "https://github.com/apairo-robotics/apairo_preprocess/issues"
+
+[project.optional-dependencies]
+dev = ["pytest"]
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["apairo_preprocess*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
