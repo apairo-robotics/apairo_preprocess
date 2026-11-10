@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "apairo-preprocess"
-version = "0.2.0"
+version = "0.3.0"
 description = "Preprocessing for apairo datasets: odometry, ground segmentation, projection, traversability labels"
 readme = "README.md"
 authors = [
