@@ -205,3 +205,38 @@ def test_radial_distortion_moves_point_outward():
     np.testing.assert_allclose(distorted[0, 0], 60.01, atol=1e-5)
     assert distorted[0, 0] > plain[0, 0]
     np.testing.assert_allclose(distorted[0, 1], plain[0, 1], atol=1e-6)
+
+
+# ------------------------------------------------------------------
+# Exact image edge (float64 bound test vs float32 output)
+# ------------------------------------------------------------------
+
+# Just inside the far edge in float64: u = 100 * x + 50 = 100 - 3e-6, which
+# rounds to exactly 100.0 (= width) once stored as float32.
+_JUST_BELOW_HALF = float(np.nextafter(np.float32(0.5), np.float32(0.0)))
+
+
+@pytest.mark.parametrize("axis", [0, 1])
+def test_point_rounding_onto_far_edge_never_indexes_out_of_image(axis):
+    xyz = [0.0, 0.0, 1.0]
+    xyz[axis] = _JUST_BELOW_HALF
+    uv = _project([xyz])
+    size = SIZE[1 - axis]  # u checks the width, v the height
+    if np.isfinite(uv[0, 0]):
+        # The documented contract: int() of a valid row indexes the image.
+        assert 0 <= int(np.floor(uv[0, axis])) < size
+        assert uv[0, axis] < size
+    else:
+        assert np.isnan(uv[0]).all()
+
+
+def test_point_just_inside_far_edge_is_kept_on_last_pixel():
+    # Comfortably representable in float32: stays valid, on the last column.
+    uv = _project([[0.49999, 0.0, 1.0]])
+    assert np.isfinite(uv[0, 0])
+    assert int(uv[0, 0]) == SIZE[1] - 1
+
+
+def test_point_exactly_on_far_edge_is_nan():
+    uv = _project([[0.5, 0.0, 1.0]])  # u == width exactly: outside [0, W)
+    assert np.isnan(uv[0]).all()

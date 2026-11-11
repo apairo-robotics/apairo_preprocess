@@ -31,6 +31,20 @@ from apairo.core.preprocessor import SequencePreprocessor
 from apairo.core.sample import Sample
 from apairo_transform import RangeFilter
 
+class _OrderNorm:
+    """``(N, 3) -> (N,)`` norm of a given order (``2`` a sphere, ``np.inf`` a
+    cube): the callable :class:`~apairo_transform.RangeFilter` takes."""
+
+    def __init__(self, order: float) -> None:
+        self.order = float(order)
+
+    def __call__(self, points: np.ndarray) -> np.ndarray:
+        return np.linalg.norm(points, ord=self.order, axis=1)
+
+    def __repr__(self) -> str:
+        return f"_OrderNorm({self.order})"
+
+
 class TraversabilityFromTrajectory(SequencePreprocessor):
     """Label each point traversable if it lies in the robot's forward footprint.
 
@@ -44,10 +58,33 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
                                float64.  Apply ``PoseTo4x4()`` from ``apairo_transform``
                                if needed.
         robot_radius:          Half-width of the robot footprint in XY (metres).
-        height_min:            Minimum point height relative to the nearest robot
-                               position to be traversable (metres, ≤ 0).
-        height_max:            Maximum point height relative to the nearest robot
-                               position (metres, ≥ 0).
+                               Isotropic circle test, ignored when ``robot_length`` /
+                               ``robot_width`` are given.
+        robot_length:          Full length of the robot footprint along its heading
+                               (metres). Must be given together with ``robot_width``.
+                               When set, the footprint is a heading-aligned rectangle
+                               (matching the physical robot, e.g. its wheel-contact
+                               box) instead of ``robot_radius``'s isotropic circle —
+                               use this whenever the robot is not roughly as wide as
+                               it is long, since a circle sized to the robot's length
+                               over-labels its width (and vice versa). Heading is read
+                               from each future pose's own rotation matrix, not
+                               finite-differenced from consecutive positions, so it
+                               stays accurate even where the robot is nearly
+                               stationary (position noise dominates finite differences
+                               there).
+        robot_width:           Full width of the robot footprint, lateral to its
+                               heading (metres). See ``robot_length``.
+        height_min:            Lowest point height, relative to the ground under a
+                               future pose, to be traversable (metres, ≤ 0).
+        height_max:            Highest point height relative to that ground
+                               (metres, ≥ 0).
+        pose_height:           Height of the pose frame's origin above the ground
+                               (metres). ``0`` (default) for poses given at
+                               ground level. With lidar odometry (KISS-ICP, GICP)
+                               the pose is the sensor's: pass the lidar's
+                               mounting height, or every ground point lies below
+                               the window and no point is ever traversable.
         forward_window:        Maximum number of future poses to look ahead.
                                ``None`` (default) uses the entire remaining trajectory.
         forward_distance:      Maximum *path length* (metres) of future trajectory
@@ -64,10 +101,10 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
                                (e.g. humans) close to the robot.  The shape of the
                                exclusion zone is controlled by ``near_exclusion_norm``.
                                ``0.0`` disables the exclusion (default).
-        near_exclusion_norm:   Norm order for the exclusion distance, forwarded to
-                               :class:`~apairo_transform.RangeFilter`.  Use
-                               ``np.inf`` (L∞) for a cube, ``2`` for a sphere.
-                               Defaults to ``np.inf``.
+        near_exclusion_norm:   Norm order for the exclusion distance: ``np.inf``
+                               (L∞) for a cube, ``2`` for a sphere. Defaults to
+                               ``np.inf``. A callable ``(N, 3) -> (N,)`` is
+                               accepted too.
         output_key:            Override the default output channel name ``"trav_traj"``.
     """
 
@@ -81,6 +118,8 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
         lidar_key: str = "lidar",
         poses_key: str = "poses",
         robot_radius: float = 0.75,
+        robot_length: float | None = None,
+        robot_width: float | None = None,
         height_min: float = -0.3,
         height_max: float = 0.5,
         forward_window: int | None = None,
@@ -89,17 +128,35 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
         near_exclusion_radius: float = 0.0,
         near_exclusion_norm: float = np.inf,
         output_key: str | None = None,
+        pose_height: float = 0.0,
     ) -> None:
+        if (robot_length is None) != (robot_width is None):
+            raise ValueError("robot_length and robot_width must be given together")
+
         self._lidar_key = lidar_key
         self._poses_key = poses_key
         self._robot_radius = robot_radius
-        self._height_min = height_min
-        self._height_max = height_max
+        self._robot_length = robot_length
+        self._robot_width = robot_width
+        self._oriented = robot_length is not None
+        # Heights are tested against the pose origin: the window is shifted
+        # down by the origin's height above the ground.
+        self.pose_height = float(pose_height)
+        self._height_min = height_min - self.pose_height
+        self._height_max = height_max - self.pose_height
         self._forward_window = forward_window
         self._forward_distance = forward_distance
         self._sequence_gap = sequence_gap
         self._near_filter = (
-            RangeFilter(min=near_exclusion_radius, max=None, norm=near_exclusion_norm)
+            RangeFilter(
+                min=near_exclusion_radius,
+                max=None,
+                norm=(
+                    near_exclusion_norm
+                    if callable(near_exclusion_norm)
+                    else _OrderNorm(near_exclusion_norm)
+                ),
+            )
             if near_exclusion_radius > 0
             else None
         )
@@ -112,6 +169,8 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
     def __call__(self, frames: Iterator[Sample]) -> np.ndarray:
         all_samples = list(frames)
         n = len(all_samples)
+        if n == 0:
+            return np.empty(0, dtype=object)
 
         poses = np.asarray(
             np.stack([s.data[self._poses_key] for s in all_samples]), dtype=np.float64
@@ -132,10 +191,22 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
         # Cumulative path length, for the forward_distance cap.
         path = np.concatenate([[0.0], np.cumsum(dists)])
 
+        if self._oriented:
+            # Yaw from each pose's own rotation matrix -- robust where the robot is
+            # nearly stationary (finite-differenced heading is noise-dominated there).
+            headings = np.arctan2(poses[:, 1, 0], poses[:, 0, 0])
+            half_length = self._robot_length / 2.0
+            half_width = self._robot_width / 2.0
+            covering_radius = float(np.hypot(half_length, half_width))
+
         results = []
         for idx, sample in enumerate(all_samples):
             pc = np.asarray(sample.data[self._lidar_key])
-            xyz_sensor = pc[:, :3].astype(np.float64)
+            xyz_all = pc[:, :3].astype(np.float64)
+            # A return without a position (NaN or inf) is never traversable; it
+            # used to abort the whole sequence in the nearest-pose search.
+            finite = np.all(np.isfinite(xyz_all), axis=1)
+            xyz_sensor = xyz_all[finite]
             n_pts = len(xyz_sensor)
 
             T = poses[idx]
@@ -153,23 +224,49 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
             future_pos = poses[idx + 1 : end, :3, 3]
 
             if len(future_pos) == 0:
-                results.append(np.zeros(n_pts, dtype=np.uint8))
+                results.append(np.zeros(len(xyz_all), dtype=np.uint8))
                 continue
 
+            # Every future pose whose footprint may hold the point is tested, in
+            # both modes: a path that passes over a point at its own height and
+            # crosses the same spot again higher up (a ramp, a bridge, vertical
+            # drift on a loop) still drove over it.
+            reach = covering_radius if self._oriented else float(self._robot_radius)
             tree = KDTree(future_pos[:, :2])
             # workers=-1 deadlocks when called from a ThreadPoolExecutor (e.g. viewer)
-            dist_xy, nn_idx = tree.query(xyz_world[:, :2], k=1)
-            dz = xyz_world[:, 2] - future_pos[nn_idx, 2]
-
-            trav = (
-                (dist_xy < self._robot_radius)
-                & (dz >= self._height_min)
-                & (dz <= self._height_max)
-            )
+            cand_lists = tree.query_ball_point(xyz_world[:, :2], r=reach)
+            lengths = np.fromiter((len(c) for c in cand_lists), dtype=np.int64, count=n_pts)
+            trav = np.zeros(n_pts, dtype=bool)
+            n_pairs = int(lengths.sum())
+            if n_pairs > 0:
+                point_idx = np.repeat(np.arange(n_pts), lengths)
+                cand_idx = np.fromiter(
+                    (c for cl in cand_lists for c in cl), dtype=np.int64, count=n_pairs
+                )
+                ddx = xyz_world[point_idx, 0] - future_pos[cand_idx, 0]
+                ddy = xyz_world[point_idx, 1] - future_pos[cand_idx, 1]
+                dz_pair = xyz_world[point_idx, 2] - future_pos[cand_idx, 2]
+                if self._oriented:
+                    th = headings[idx + 1 : end][cand_idx]
+                    c, s = np.cos(th), np.sin(th)
+                    # world delta -> candidate pose's local frame (rotate by -heading)
+                    dx = c * ddx + s * ddy
+                    dy = -s * ddx + c * ddy
+                    footprint = (np.abs(dx) <= half_length) & (np.abs(dy) <= half_width)
+                else:
+                    footprint = np.hypot(ddx, ddy) < self._robot_radius
+                inside = (
+                    footprint
+                    & (dz_pair >= self._height_min)
+                    & (dz_pair <= self._height_max)
+                )
+                np.logical_or.at(trav, point_idx[inside], True)
             if self._near_filter is not None:
                 trav &= self._near_filter.compute_mask(xyz_sensor)
 
-            results.append(trav.astype(np.uint8))
+            labels = np.zeros(len(xyz_all), dtype=np.uint8)
+            labels[finite] = trav
+            results.append(labels)
 
         # Uniform scans stack to (N, P) as before; ragged scans (real lidar,
         # variable return count) become an object array of per-frame rows,

@@ -114,9 +114,11 @@ def main() -> None:
     frames = [Sample(data={"lidar": scan_at(i), "poses": poses[i]}) for i in range(n_frames)]
 
     # -- stage 1: traversability from trajectory ---------------------------
-    # Poses sit at sensor height (z = 1.2 m): the ground under the robot is
-    # at dz ~ -1.2, so the height window is centred there.
-    trav_p = TraversabilityFromTrajectory(robot_radius=0.9, height_min=-1.8, height_max=-0.6)
+    # Poses sit at sensor height (z = 1.2 m): pose_height puts the height
+    # window on the ground under the robot.
+    trav_p = TraversabilityFromTrajectory(
+        robot_radius=0.9, pose_height=1.2, height_min=-0.6, height_max=0.6
+    )
     labels = trav_p(iter(frames))[k]
     scan = frames[k].data["lidar"]
 

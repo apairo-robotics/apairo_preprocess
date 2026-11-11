@@ -47,9 +47,14 @@ def _filter_and_quantize(
         inverse:       Per-point voxel index array, shape (N_kept,).
         n_voxels:      Number of occupied voxels.
     """
-    mask: np.ndarray | None = None
+    # A return without a position (NaN or inf) belongs to no voxel: it used to
+    # become a voxel at the int32 minimum, with a NaN row in the output.
+    mask: np.ndarray | None = np.all(np.isfinite(xyz), axis=1)
     if max_range is not None:
-        mask = np.linalg.norm(xyz, axis=1) < max_range
+        mask &= np.linalg.norm(xyz, axis=1) < max_range
+    if mask.all():
+        mask = None
+    else:
         xyz = xyz[mask]
 
     if len(xyz) == 0:
@@ -76,6 +81,8 @@ class VoxelisePointCloud(FramePreprocessor):
         max_range:   Discard points farther than this distance from the sensor
                      origin (metres).  ``None`` keeps all points.
         reduction:   How to pick the representative point per voxel.
+        seed:        Seed of ``reduction="random"``. With a seed, the same scan
+                     gives the same points on every run; ``None`` draws anew.
         output_key:  Override the default output channel name ``"voxelised"``.
     """
 
@@ -91,11 +98,13 @@ class VoxelisePointCloud(FramePreprocessor):
         max_range: float | None = None,
         reduction: _Reduction = "centroid",
         output_key: str | None = None,
+        seed: int | None = None,
     ) -> None:
         if voxel_size <= 0:
             raise ValueError(f"voxel_size must be positive, got {voxel_size}")
         if max_range is not None and max_range <= 0:
             raise ValueError(f"max_range must be positive, got {max_range}")
+        self.seed = seed
         if reduction not in ("centroid", "first", "random"):
             raise ValueError(
                 f"reduction must be 'centroid', 'first', or 'random', got {reduction!r}"
@@ -134,13 +143,14 @@ class VoxelisePointCloud(FramePreprocessor):
             return out
 
         if self._reduction == "first":
-            out = np.empty((n_voxels, pc.shape[1]), dtype=np.float64)
-            # assign in reverse so the first occurrence wins
-            out[inverse] = pc
-            return out
+            # The lowest input index of each voxel (a plain `out[inverse] = pc`
+            # keeps the last point written, not the first).
+            first = np.full(n_voxels, len(pc), dtype=np.int64)
+            np.minimum.at(first, inverse, np.arange(len(pc)))
+            return pc[first]
 
         # random: shuffle so a random point ends up last (and thus selected)
-        rng = np.random.default_rng()
+        rng = np.random.default_rng(self.seed)
         chosen = np.empty(n_voxels, dtype=np.int64)
         perm = rng.permutation(len(pc))
         chosen[inverse[perm]] = perm
@@ -212,16 +222,28 @@ class VoxeliseLabels(FramePreprocessor):
         if n_voxels == 0:
             return np.empty(0, dtype=labels.dtype)
 
+        # Both aggregations go through one sort of the (voxel, label) pairs,
+        # so they hold for any label values: negative ids (an ignore label of
+        # -1), and large ones (SemanticKITTI's instance << 16 | class), which a
+        # table of n_voxels x max_label counters cannot.
+        order = np.lexsort((labels, inverse))
+        voxel, label = inverse[order], labels[order]
+        out = np.empty(n_voxels, dtype=labels.dtype)
         if self._aggregation == "max":
-            out = np.zeros(n_voxels, dtype=labels.dtype)
-            np.maximum.at(out, inverse, labels)
+            last = np.r_[voxel[1:] != voxel[:-1], True]  # highest label of each voxel
+            out[voxel[last]] = label[last]
             return out
 
-        # majority: encode (voxel_idx, label) as a single int and bincount
-        n_classes = int(labels.max()) + 1
-        keys = inverse.astype(np.int64) * n_classes + labels.astype(np.int64)
-        pair_counts = np.bincount(keys, minlength=n_voxels * n_classes)
-        return pair_counts.reshape(n_voxels, n_classes).argmax(axis=1).astype(labels.dtype)
+        # majority: runs of equal (voxel, label), the longest per voxel; ties
+        # go to the smallest label.
+        start = np.r_[True, (voxel[1:] != voxel[:-1]) | (label[1:] != label[:-1])]
+        starts = np.flatnonzero(start)
+        counts = np.diff(np.r_[starts, len(voxel)])
+        run_voxel, run_label = voxel[starts], label[starts]
+        best = np.lexsort((run_label, -counts, run_voxel))
+        pick = best[np.r_[True, run_voxel[best][1:] != run_voxel[best][:-1]]]
+        out[run_voxel[pick]] = run_label[pick]
+        return out
 
 
 class VoxeliseCoords(FramePreprocessor):

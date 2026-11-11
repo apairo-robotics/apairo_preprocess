@@ -50,7 +50,9 @@ class ImageMaskFromPointLabels(FramePreprocessor):
         labels_key:      Input channel with per-point integer labels ``(N,)``,
                          row-aligned with the projection.
         projection_key:  Input channel with ``(N, 3)`` ``[u, v, depth]`` rows
-                         from :class:`LidarCameraProjection`.
+                         from :class:`LidarCameraProjection`.  A point paints
+                         pixel ``(floor(v), floor(u))``; rows that are NaN or
+                         whose pixel falls outside the image are not painted.
         radius:          Splat radius in pixels.  ``0`` (default) paints one
                          pixel per point; ``r`` paints a disc of radius ``r``,
                          densifying the sparse lidar coverage.
@@ -121,14 +123,31 @@ class ImageMaskFromPointLabels(FramePreprocessor):
         height, width = self._height, self._width
         mask = np.full((height, width), self._unknown, dtype=np.uint8)
 
-        valid = np.isfinite(uv[:, 0])
+        # Pixel index = floor of the stored coordinate, and a point is painted
+        # only if that index is inside the image: the bound test and the index
+        # come from the same values, so a point on (or past) the edge is
+        # dropped as a whole instead of splatting its in-image neighbours or
+        # aliasing into another occlusion bin.
+        with np.errstate(invalid="ignore"):
+            cols_f = np.floor(uv[:, 0])
+            rows_f = np.floor(uv[:, 1])
+            valid = (
+                np.isfinite(cols_f) & np.isfinite(rows_f)
+                & (cols_f >= 0) & (cols_f < width)
+                & (rows_f >= 0) & (rows_f < height)
+            )
         if not valid.any():
             return mask
 
-        cols = uv[valid, 0].astype(np.intp)
-        rows = uv[valid, 1].astype(np.intp)
+        cols = cols_f[valid].astype(np.intp)
+        rows = rows_f[valid].astype(np.intp)
         depth = uv[valid, 2].astype(np.float64)
         vals = labels[valid]
+        if vals.dtype.kind == "f" and not np.all(vals == np.floor(vals)):
+            raise ValueError(
+                "labels must be integers (class ids); got fractional values, "
+                "which a mask would truncate."
+            )
         if vals.min() < 0 or vals.max() > 255:
             raise ValueError(
                 f"labels must fit uint8, got range [{vals.min()}, {vals.max()}]"

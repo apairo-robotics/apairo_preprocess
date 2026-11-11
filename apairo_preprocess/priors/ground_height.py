@@ -49,6 +49,8 @@ class GroundHeightFromLabels(FramePreprocessor):
     def __call__(self, sample: Sample) -> np.ndarray:
         xyz = np.asarray(sample.data[self._voxelised_key], dtype=np.float64)[:, :3]
         labels = np.asarray(sample.data[self._ground_key])
+        if len(xyz) == 0:
+            return np.empty(0, dtype=np.float32)
         ground_pts = xyz[labels == 0]
 
         if len(ground_pts) == 0:

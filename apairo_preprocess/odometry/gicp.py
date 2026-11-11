@@ -68,6 +68,14 @@ class GICPOdometry(FramePreprocessor):
         self._prev_pcd = None
         self._T_accum = np.eye(4, dtype=np.float64)
 
+    def start_sequence(self) -> None:
+        """Forget the previous scan and the pose: the next scan is a new world
+        origin. Called by apairo's runner (>= 0.11) at the start of each
+        sequence of a root; without it a sequence continued the previous one's
+        pose and registered its first scan against an unrelated cloud."""
+        self._prev_pcd = None
+        self._T_accum = np.eye(4, dtype=np.float64)
+
     def __call__(self, sample: Sample) -> np.ndarray:
         pc = np.asarray(sample.data[self._lidar_key])
         xyz = pc[:, :3].astype(np.float64)

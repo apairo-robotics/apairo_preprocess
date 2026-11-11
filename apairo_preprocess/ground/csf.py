@@ -35,10 +35,14 @@ def _run_csf(
     csf.params.class_threshold = class_threshold
     csf.params.interations = 500
 
+    if len(xyz) == 0:
+        return [], []
     csf.setPointCloud(xyz.tolist())
     ground_idx = CSF.VecInt()
     non_ground_idx = CSF.VecInt()
-    csf.do_filtering(ground_idx, non_ground_idx)
+    # exportCloth=False: by default CSF writes cloth_nodes.txt in the current
+    # directory, on every frame.
+    csf.do_filtering(ground_idx, non_ground_idx, False)
     return list(ground_idx), list(non_ground_idx)
 
 

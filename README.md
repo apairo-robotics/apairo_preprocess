@@ -151,13 +151,19 @@ SemanticKittiDataset.run_preprocess(
 
 Requires poses to be computed first (e.g. with `KissICPOdometry`).
 
+Lidar odometry gives the pose of the *sensor*, not of the ground under the
+robot: pass the lidar's mounting height as `pose_height`, or every ground point
+lies below the height window and nothing is labelled traversable.
+
 ```python
 from apairo.dataset.goose import Goose3DDataset
 from apairo_preprocess import KissICPOdometry, TraversabilityFromTrajectory
 
 Goose3DDataset.run_preprocess(KissICPOdometry(voxel_size=1.0), "/data/goose/seq_001")
 Goose3DDataset.run_preprocess(
-    TraversabilityFromTrajectory(poses_key="kissicp_poses", robot_radius=0.75),
+    TraversabilityFromTrajectory(
+        poses_key="kissicp_poses", robot_radius=0.75, pose_height=1.2
+    ),
     "/data/goose/seq_001",
 )
 # writes trav_traj/  (uint8: 1=traversable, 0=not)
