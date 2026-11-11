@@ -29,17 +29,33 @@ from apairo.core.preprocessor import FramePreprocessor
 from apairo.core.sample import Sample
 
 
+def _grid_size(bounds, resolution) -> tuple[int, int]:
+    """``(h, w)`` of the grid covering *bounds*: the last row or column is cut
+    by the bound when the extent is not a multiple of the resolution. (Rounding
+    the count dropped points inside the bounds, or took in points outside.)"""
+    xmin, xmax, ymin, ymax = bounds
+    w = int(np.ceil(round((xmax - xmin) / resolution, 9)))
+    h = int(np.ceil(round((ymax - ymin) / resolution, 9)))
+    return h, w
+
+
 def _rasterise(points, values, *, bounds, resolution, reduce, background):
     xmin, xmax, ymin, ymax = bounds
-    w = int(round((xmax - xmin) / resolution))
-    h = int(round((ymax - ymin) / resolution))
+    h, w = _grid_size(bounds, resolution)
 
-    xy = np.asarray(points)[:, :2]
+    xy = np.asarray(points)[:, :2].astype(np.float64)
     vals = np.asarray(values, dtype=np.float64)
 
-    col = np.floor((xy[:, 0] - xmin) / resolution).astype(np.int64)
-    row = np.floor((ymax - xy[:, 1]) / resolution).astype(np.int64)
-    inside = (col >= 0) & (col < w) & (row >= 0) & (row < h)
+    # The tiny offset keeps a point lying exactly on a cell edge in its cell:
+    # 0.3 / 0.1 is 2.9999999999999996 in floating point.
+    col = np.floor((xy[:, 0] - xmin) / resolution + 1e-9).astype(np.int64)
+    row = np.floor((ymax - xy[:, 1]) / resolution + 1e-9).astype(np.int64)
+    inside = (
+        (xy[:, 0] >= xmin) & (xy[:, 0] < xmax) & (xy[:, 1] > ymin) & (xy[:, 1] <= ymax)
+        & (col >= 0) & (col < w) & (row >= 0) & (row < h)
+        # A value that is not a number says nothing about its cell.
+        & np.isfinite(vals)
+    )
     cell = row[inside] * w + col[inside]
     vals = vals[inside]
 
@@ -51,7 +67,8 @@ def _rasterise(points, values, *, bounds, resolution, reduce, background):
         # no point touched.
         acc = np.full(h * w, -np.inf)
         np.maximum.at(acc, cell, vals)
-        hit = np.isfinite(acc)
+        hit = np.zeros(h * w, dtype=bool)
+        hit[cell] = True
         grid[hit] = acc[hit]
     elif reduce == "last":
         grid[cell] = vals
@@ -125,10 +142,7 @@ class BEVRasterisation(FramePreprocessor):
     @property
     def shape(self) -> tuple[int, int]:
         """``(height, width)`` of the output grid, from ``bounds``/``resolution``."""
-        xmin, xmax, ymin, ymax = self._bounds
-        w = int(round((xmax - xmin) / self._resolution))
-        h = int(round((ymax - ymin) / self._resolution))
-        return h, w
+        return _grid_size(self._bounds, self._resolution)
 
     def __call__(self, sample: Sample) -> np.ndarray:
         points = np.asarray(sample.data[self._points_key])

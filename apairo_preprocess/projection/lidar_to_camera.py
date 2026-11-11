@@ -52,6 +52,22 @@ def _distort_plumb_bob(x: np.ndarray, y: np.ndarray, d: np.ndarray) -> tuple:
     return xd, yd
 
 
+def _monotonic_limit(d: np.ndarray) -> float:
+    """The squared radius below which the radial model is one-to-one.
+
+    The distorted radius is ``r * (1 + k1 r^2 + k2 r^4 + k3 r^6)``. Past the
+    radius where its derivative first reaches zero the polynomial turns back:
+    a point far outside the field of view is folded onto the image, as a
+    valid-looking pixel. That limit, as ``r^2``; ``inf`` when the model never
+    turns back.
+    """
+    k1, k2, _, _, k3 = d
+    # d/dr [r (1 + k1 s + k2 s^2 + k3 s^3)] with s = r^2
+    roots = np.roots([7.0 * k3, 5.0 * k2, 3.0 * k1, 1.0])
+    positive = [float(r.real) for r in roots if abs(r.imag) < 1e-12 and r.real > 0]
+    return min(positive) if positive else float("inf")
+
+
 class LidarCameraProjection(FramePreprocessor):
     """Per-point pixel coordinates of a lidar scan in a camera image.
 
@@ -134,8 +150,10 @@ class LidarCameraProjection(FramePreprocessor):
                     f"distortion must be (k1, k2, p1, p2[, k3]), got {d.size} values"
                 )
             self._dist = d
+            self._r2_limit = _monotonic_limit(d)
         else:
             self._dist = None
+            self._r2_limit = float("inf")
 
         self._K = K
         self._T = T
@@ -158,6 +176,13 @@ class LidarCameraProjection(FramePreprocessor):
 
         out = np.full((n, 3), np.nan, dtype=np.float32)
         front = z > 1e-9
+        if self._dist is not None:
+            # Outside the radius where the distortion model is one-to-one, a
+            # point is not in the image, whatever pixel the polynomial gives:
+            # far off-axis lidar returns were folded back into the picture.
+            with np.errstate(invalid="ignore", divide="ignore"):
+                r2 = (cam[:, 0] ** 2 + cam[:, 1] ** 2) / (z * z)
+            front &= r2 < self._r2_limit
         if not front.any():
             return out
 

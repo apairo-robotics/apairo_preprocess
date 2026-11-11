@@ -26,9 +26,9 @@ graph (``cal.get_tf(lidar_frame, camera_frame)``).
 
 Usage::
 
-    python examples/traversability_image_mask.py /data/tartan/seq \\
+    python examples/traversability_image_mask.py /data/tartan/seq --pose-height 1.2 \\
         --lidar-frame velodyne --camera-frame multisense_left
-    python examples/traversability_image_mask.py /data/tartan/seq \\
+    python examples/traversability_image_mask.py /data/tartan/seq --pose-height 1.2 \\
         --lidar-frame velodyne --camera-frame multisense_left \\
         --rgb --splat-radius 2 --occlusion-bin 8 --overwrite
 """
@@ -86,6 +86,8 @@ def main() -> None:
                    help="Input image channel for --rgb (default: image_left_color).")
     p.add_argument("--poses-key", default="kissicp_poses",
                    help="Poses channel from the odometry step (default: kissicp_poses).")
+    p.add_argument("--pose-height", type=float, required=True,
+                   help="Height of the lidar above the ground (metres).")
     p.add_argument("--robot-radius", type=float, default=0.75,
                    help="Robot half-width in XY (metres, default: 0.75).")
     p.add_argument("--splat-radius", type=int, default=2,
@@ -118,7 +120,8 @@ def main() -> None:
     )
     frames = [sync[i] for i in range(len(sync))]
     trav = TraversabilityFromTrajectory(
-        lidar_key=args.lidar_key, poses_key=args.poses_key, robot_radius=args.robot_radius
+        lidar_key=args.lidar_key, poses_key=args.poses_key, robot_radius=args.robot_radius,
+        pose_height=args.pose_height,
     )(iter(frames))
     write_channel(
         seq, "trav_traj", trav, [s.timestamp for s in frames],

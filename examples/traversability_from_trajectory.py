@@ -11,8 +11,8 @@ The script runs in two steps:
 
 Usage::
 
-    python examples/traversability_from_trajectory.py /data/GOOSE_3D --split train
-    python examples/traversability_from_trajectory.py /data/GOOSE_3D --split val \\
+    python examples/traversability_from_trajectory.py /data/GOOSE_3D --split train --pose-height 1.2
+    python examples/traversability_from_trajectory.py /data/GOOSE_3D --split val --pose-height 1.2 \\
         --poses-key kissicp_poses --robot-radius 0.6 --overwrite
 """
 
@@ -34,10 +34,13 @@ def main() -> None:
                    help="Poses channel produced by the odometry step (default: kissicp_poses).")
     p.add_argument("--robot-radius", type=float, default=0.75,
                    help="Robot half-width in XY (metres, default: 0.75).")
+    p.add_argument("--pose-height", type=float, required=True,
+                   help="Height of the lidar above the ground (metres). KISS-ICP poses "
+                        "are the sensor's; without it no ground point is traversable.")
     p.add_argument("--height-min", type=float, default=-0.3,
-                   help="Min point height relative to robot position (default: -0.3 m).")
+                   help="Min point height relative to the ground under the robot (default: -0.3 m).")
     p.add_argument("--height-max", type=float, default=0.5,
-                   help="Max point height relative to robot position (default: 0.5 m).")
+                   help="Max point height relative to the ground under the robot (default: 0.5 m).")
     p.add_argument("--forward-window", type=int, default=None,
                    help="Max number of future poses to look ahead. Default: full sequence.")
     p.add_argument("--voxel-size", type=float, default=1.0,
@@ -73,6 +76,7 @@ def main() -> None:
             lidar_key=args.lidar_key,
             poses_key=args.poses_key,
             robot_radius=args.robot_radius,
+            pose_height=args.pose_height,
             height_min=args.height_min,
             height_max=args.height_max,
             forward_window=args.forward_window,

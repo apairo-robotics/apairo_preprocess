@@ -25,6 +25,8 @@ def _ransac_plane(
     n = len(xyz)
     best_inliers = -1
     best_normal = np.array([0.0, 0.0, 1.0])
+    if n < 3:  # no plane to fit: a horizontal one through what there is
+        return best_normal, (float(-np.median(xyz[:, 2])) if n else 0.0)
     best_d = float(-np.median(xyz[:, 2]))
 
     for _ in range(n_iter):

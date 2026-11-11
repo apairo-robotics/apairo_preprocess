@@ -143,6 +143,11 @@ class ImageMaskFromPointLabels(FramePreprocessor):
         rows = rows_f[valid].astype(np.intp)
         depth = uv[valid, 2].astype(np.float64)
         vals = labels[valid]
+        if vals.dtype.kind == "f" and not np.all(vals == np.floor(vals)):
+            raise ValueError(
+                "labels must be integers (class ids); got fractional values, "
+                "which a mask would truncate."
+            )
         if vals.min() < 0 or vals.max() > 255:
             raise ValueError(
                 f"labels must fit uint8, got range [{vals.min()}, {vals.max()}]"

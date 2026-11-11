@@ -73,8 +73,18 @@ class KissICPOdometry(FramePreprocessor):
         cfg.data.min_range = min_range
         cfg.data.deskew = deskew
         cfg.mapping.voxel_size = float(voxel_size)
+        self._config = cfg
         self._kiss = KissICP(config=cfg)
         self._deskew = deskew
+
+    def start_sequence(self) -> None:
+        """Forget the map and the pose: the next scan is a new world origin.
+
+        Called by apairo's runner (>= 0.11) at the start of each sequence of a
+        root. Without it the first scan of a sequence was registered against
+        the previous sequence's map and continued its pose.
+        """
+        self._kiss = KissICP(config=self._config)
 
     def __call__(self, sample: Sample) -> np.ndarray:
         pc = np.asarray(sample.data[self._lidar_key], dtype=np.float64)
