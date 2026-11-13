@@ -106,6 +106,16 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
                                ``np.inf``. A callable ``(N, 3) -> (N,)`` is
                                accepted too.
         output_key:            Override the default output channel name ``"trav_traj"``.
+        valid_key:             Channel holding one bool per scan: whether its pose
+                               can be trusted (e.g. ``reference_poses``' second
+                               output). An invalid scan cuts the trajectory as
+                               ``sequence_gap`` does -- no look-ahead across it --
+                               and none of its points is traversable. Without it,
+                               a non-finite pose is an error.
+        unknown_label:         Label of every point of an invalid scan, e.g. 255
+                               for "unknown". ``None`` (default) labels them 0,
+                               which a consumer cannot tell from "not
+                               traversable".
     """
 
     output_key: ClassVar[str] = "trav_traj"
@@ -129,6 +139,8 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
         near_exclusion_norm: float = np.inf,
         output_key: str | None = None,
         pose_height: float = 0.0,
+        valid_key: str | None = None,
+        unknown_label: int | None = None,
     ) -> None:
         if (robot_length is None) != (robot_width is None):
             raise ValueError("robot_length and robot_width must be given together")
@@ -161,8 +173,15 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
             else None
         )
 
-        self.input_keys = [lidar_key, poses_key]
-        self.sources = [lidar_key, poses_key]
+        if unknown_label is not None and not 0 <= int(unknown_label) <= 255:
+            raise ValueError(f"unknown_label must fit in uint8, got {unknown_label}")
+        if unknown_label is not None and int(unknown_label) in (0, 1):
+            raise ValueError("unknown_label must differ from the labels 0 and 1")
+        self._valid_key = valid_key
+        self._unknown = None if unknown_label is None else int(unknown_label)
+        keys = [lidar_key, poses_key] + ([valid_key] if valid_key is not None else [])
+        self.input_keys = keys
+        self.sources = list(keys)
         if output_key is not None:
             self.output_key = output_key
 
@@ -181,15 +200,33 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
                 f"Got {poses.shape}"
             )
 
+        pose_finite = np.all(np.isfinite(poses.reshape(n, -1)), axis=1)
+        if self._valid_key is None:
+            if not pose_finite.all():
+                raise ValueError(
+                    f"{int((~pose_finite).sum())} pose(s) are not finite. Pass the "
+                    f"validity of each pose as valid_key (reference_poses gives "
+                    f"it), so that those scans are left out."
+                )
+            valid = pose_finite
+        else:
+            valid = np.array(
+                [bool(np.asarray(s.data[self._valid_key])) for s in all_samples]
+            ) & pose_finite
+
         # Sequence boundary detection — done here where poses are available.
+        # A step is broken by a gap larger than sequence_gap or by an invalid
+        # scan at either end; NaN distances (invalid poses) are broken too.
         positions = poses[:, :3, 3]
         dists = np.linalg.norm(np.diff(positions, axis=0), axis=1)
-        boundaries = np.where(dists > self._sequence_gap)[0]
+        broken = ~(dists <= self._sequence_gap) | ~valid[:-1] | ~valid[1:]
+        boundaries = np.where(broken)[0]
         ends = np.concatenate([boundaries, [n - 1]])
         seq_end = ends[np.searchsorted(ends, np.arange(n))]
 
-        # Cumulative path length, for the forward_distance cap.
-        path = np.concatenate([[0.0], np.cumsum(dists)])
+        # Cumulative path length, for the forward_distance cap. A broken step
+        # adds nothing: no look-ahead crosses it.
+        path = np.concatenate([[0.0], np.cumsum(np.where(broken, 0.0, dists))])
 
         if self._oriented:
             # Yaw from each pose's own rotation matrix -- robust where the robot is
@@ -202,6 +239,10 @@ class TraversabilityFromTrajectory(SequencePreprocessor):
         results = []
         for idx, sample in enumerate(all_samples):
             pc = np.asarray(sample.data[self._lidar_key])
+            if not valid[idx]:
+                fill = 0 if self._unknown is None else self._unknown
+                results.append(np.full(len(pc), fill, dtype=np.uint8))
+                continue
             xyz_all = pc[:, :3].astype(np.float64)
             # A return without a position (NaN or inf) is never traversable; it
             # used to abort the whole sequence in the nearest-pose search.

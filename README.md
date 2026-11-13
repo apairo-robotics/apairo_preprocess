@@ -26,12 +26,39 @@ Requires Python ≥ 3.11.
 
 ## Preprocessors
 
-### Odometry
+### Poses
+
+Labels computed from a trajectory are only as good as the trajectory. When a
+dataset ships its own poses (an INS, a GNSS-INS, the trajectory of its
+release), use them: turning them into one pose per scan is interpolation and
+composition, with fixed rules and no parameter to tune per sensor.
+
+| Function / class | Output | Source |
+|---|---|---|
+| `reference_poses` / `ReferencePoses` | `(N, 4, 4)` float64 poses + `(N,)` bool validity, on the scan clock | pose rows delivered with the dataset |
+| `pose_validity` | `(N,)` bool | physical bounds: top speed, turn rate |
+
+A scan gets a pose only when two rows bracket its time, at most `max_gap`
+apart; nothing is extrapolated; a step faster than `max_speed` invalidates
+both of its scans; an invalid scan's pose is NaN. The rows and the scans are on
+two clocks, so the function is called directly and its outputs written with
+`apairo.ChannelWriter` (see the quickstart).
+
+Lidar odometry estimates a trajectory instead. It returns a pose even where it
+has lost track, with no signal of it, and its drift depends on the terrain:
 
 | Class | Output channel | Backend | Output |
 |---|---|---|---|
 | `KissICPOdometry` | `kissicp_poses` | [KISS-ICP](https://github.com/PRBonn/kiss-icp) | `(4, 4)` float64 pose per scan |
 | `GICPOdometry` | `gicp_poses` | Open3D GICP | `(4, 4)` float64 pose per scan |
+
+Measured on two TartanDrive 2.0 recordings against the vehicle's INS and the
+release's own SLAM trajectory: the future path seen from a scan agrees within
+5-10 cm (median) at 10 m ahead for every source, but sources drift apart with
+the look-ahead, to 1.2-1.5 m (p95) at 40 m. In vegetation, KISS-ICP was the one
+that drifted. Use lidar odometry for recordings without delivered poses, keep
+`forward_distance` short (15 m), and check it against another source when one
+exists.
 
 ### Ground segmentation
 
@@ -147,9 +174,37 @@ SemanticKittiDataset.run_preprocess(
 )
 ```
 
+### Poses delivered with a dataset
+
+```python
+import numpy as np
+from apairo import ChannelWriter
+from apairo_preprocess import ReferencePoses
+
+rows = np.load(f"{seq}/gps_odom/odometry.npy")        # [x y z qx qy qz qw, twist]
+row_times = np.loadtxt(f"{seq}/gps_odom/timestamps.txt")
+scan_times = np.loadtxt(f"{seq}/velodyne_0/timestamps.txt")
+
+ins = ReferencePoses(clock_offset=-0.05, max_gap=0.1, max_speed=20.0)
+poses, valid = ins(rows, row_times, scan_times)        # relative to the first scan
+
+with ChannelWriter(seq, "ins_poses", timestamps_from="velodyne_0", sources=["gps_odom"]) as w:
+    for i, t in enumerate(scan_times):
+        w.add(poses[i], stem=f"{i:06d}", timestamp=t)
+with ChannelWriter(seq, "ins_valid", timestamps_from="velodyne_0", sources=["gps_odom"]) as w:
+    for i, t in enumerate(scan_times):
+        w.add(np.asarray(valid[i]), stem=f"{i:06d}", timestamp=t)
+```
+
+`clock_offset` is the pose clock minus the lidar's, measured once per rig;
+`max_speed` is the robot's top speed. Pass the validity to the labeller as
+`valid_key`: an invalid scan then cuts the look-ahead, and with
+`unknown_label=255` its points read "unknown" rather than "not traversable".
+
 ### Traversability ground truth from trajectory
 
-Requires poses to be computed first (e.g. with `KissICPOdometry`).
+Requires poses first: delivered ones (above), or lidar odometry
+(`KissICPOdometry`) for a recording without any.
 
 Lidar odometry gives the pose of the *sensor*, not of the ground under the
 robot: pass the lidar's mounting height as `pose_height`, or every ground point
@@ -167,6 +222,16 @@ Goose3DDataset.run_preprocess(
     "/data/goose/seq_001",
 )
 # writes trav_traj/  (uint8: 1=traversable, 0=not)
+```
+
+With delivered poses and their validity:
+
+```python
+TraversabilityFromTrajectory(
+    poses_key="ins_poses", valid_key="ins_valid", unknown_label=255,
+    robot_radius=0.8, pose_height=1.77, forward_distance=15.0,
+)
+# uint8: 1=traversable, 0=not, 255=unknown (scan without a trusted pose)
 ```
 
 ### Traversability mask in image space

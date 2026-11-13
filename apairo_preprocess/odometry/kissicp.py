@@ -6,6 +6,11 @@ and handles motion deskewing natively when per-point timestamps are available.
 
 Output channel: ``kissicp_poses``  (npys — one .npy per scan)
 
+This is an estimate: it returns a pose even where registration has lost
+track, with no signal of it, and its drift depends on the terrain (on
+TartanDrive 2.0, it drifted in vegetation where the INS did not). When the
+dataset ships its own poses, prefer :func:`~apairo_preprocess.reference_poses`.
+
 Typical usage::
 
     dataset.run_preprocess(
