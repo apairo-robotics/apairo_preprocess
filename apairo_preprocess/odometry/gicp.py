@@ -8,6 +8,10 @@ sessions) the accumulated drift will jump, but for single-session
 splits the poses are consistent.
 
 Output channel: ``gicp_poses``  (npys — one .npy per scan)
+
+This is an estimate: it returns a pose even where registration has lost
+track, with no signal of it. When the dataset ships its own poses, prefer
+:func:`~apairo_preprocess.reference_poses`.
 """
 
 from __future__ import annotations

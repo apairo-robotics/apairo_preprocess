@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.4.0
+
+### Added
+
+- `reference_poses()` / `ReferencePoses`: poses delivered with a dataset (INS,
+  GNSS-INS, a released trajectory) as one `(4, 4)` float64 pose per scan, with
+  its validity. Interpolation between the two bracketing rows, a fixed clock
+  offset, an optional extrinsic; no extrapolation, no pose across a gap
+  larger than `max_gap`; relative to the first scan in float64, so global
+  coordinates keep their millimetres.
+- `pose_validity()`: a step faster than the robot's top speed (or turn rate)
+  invalidates both of its scans.
+- `TraversabilityFromTrajectory(valid_key=...)`: an invalid scan cuts the
+  look-ahead and has no traversable point. `unknown_label=` labels its points
+  (e.g. 255) instead of 0. A non-finite pose without `valid_key` is an error.
+
+### Changed
+
+- The README and the odometry docstrings present delivered poses first.
+  `KissICPOdometry` and `GICPOdometry` are estimates that return a pose even
+  where they have lost track; the numbers measured on TartanDrive 2.0 are in
+  the README.
+
 ## 0.3.0
 
 ### Added
